@@ -1,0 +1,64 @@
+# MySQL related Command
+
+## 以管理员方式打开命令行
+1. 可以直接搜索命令行，然后右击：以命令行方式打开
+2. win+R后按ctrl+shift+enter来打开
+3. 普通命令行内输入：
+    `runas /user:Administrator cmd`
+    后根据提示输入密码。（但是密码我忘了）
+
+## 启动mySQL服务
+1. 可以在win+R后输入services.msc查看已启动的服务
+2. 通过下列命令可以启动和禁止
+   ````
+   // mysql80 是我电脑上mysql服务的名字，可通过services.msc查看
+    net start mysql80
+    net stop mysql80
+   ````
+
+## 登录mySQL
+1. 安全方式登录：
+   ````
+   mysql -uUSERNAME -p
+   ````
+    之后根据提示输入密码
+
+2. 密码是明文
+   ````
+   mysql -uUSERNAME -pPASSWORD
+   ````
+注意： 大写的`USERNAME`和`PASSWARD`需要替换成真实的密码。（我的root账号密码是123456）
+
+3. 指定IP地址和端口号
+   ````
+   mysql -u用户名 -p密码 -hIP地址 -P端口号
+   ````
+   IP地址默认`localhost`，端口号默认`3306`
+
+## 退出mySQL
+输入`exit`即可。
+
+## Database level command
+（懒得切换中英文，所有下边一般就用英文了，全大写的名称一般都是要替换为对应的变量名） 
+
+*Note： there is no difference between UPPER CASE and lower case in mySQL* 
+### Show Database
+    //show all database
+    show databases;
+    //show specific database
+    show databases like 'DBNAME';
+
+### Create Database
+    create database DBNAME;
+
+### Delete Database
+    drop database DBNAME;
+
+### Check current databse
+    select database();
+
+### Change current databse
+    use DBNAME;
+
+### Show tables of the database
+    show tables;
