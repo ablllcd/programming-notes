@@ -146,9 +146,14 @@ Enter file in which to save the key (C:\Users\Cc/.ssh/id_rsa): D:\Programming\Gi
     ssh-add -l  //查看已添加的私钥
     ````
 
+    3. 测试私钥和公钥是否匹配
+    ````
+    ssh -T git@github.com
+    ````
+
     补充内容：配置.ssh文件无用，以及`ssh -i "C:\Users\john\.ssh\id_rsa" git@github.com`可以暂时连接密钥和网站，关闭命令行后失效。
 
-### 同步仓库
+### 更改远程仓库
 
 首先在github上创建一个仓库，这个仓库会有一个ssh连接，根据这个连接，我们把仓库下载下来
 ````
@@ -160,3 +165,5 @@ git clone git@github.com:ablllcd/Note.git
 ````
 git push
 ````
+
+### 添加远程仓库
