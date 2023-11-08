@@ -117,7 +117,7 @@ git rest --hard：这个会删除工作区和暂存区的内容，它旨在真�
 ![Alt text](pic/gitDIff.png)
 
 ## github
-### 配置SSH
+### 配置SSH （还是有问题，暂且用http吧）
 1. 首先生成ssh密钥对
 ````
 C:\Users\Cc>ssh-keygen -t rsa -b 4096
@@ -153,6 +153,15 @@ Enter file in which to save the key (C:\Users\Cc/.ssh/id_rsa): D:\Programming\Gi
 
     补充内容：配置.ssh文件无用，以及`ssh -i "C:\Users\john\.ssh\id_rsa" git@github.com`可以暂时连接密钥和网站，关闭命令行后失效。
 
+### quick start
+````
+git init
+git commit -m message
+git branch -M main
+git remote add origin https:url
+git push -u origin main
+````
+
 ### 更改远程仓库
 
 首先在github上创建一个仓库，这个仓库会有一个ssh连接，根据这个连接，我们把仓库下载下来
@@ -166,4 +175,4 @@ git clone git@github.com:ablllcd/Note.git
 git push
 ````
 
-### 添加远程仓库
+
