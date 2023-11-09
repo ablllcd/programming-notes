@@ -47,11 +47,28 @@ Tomcat支持Servlet规范（java servlet感觉是java用于web的类，之后需
 
 ## 请求响应操作
 就如同quickstart中那样，创建请求处理类即可。所谓的请求处理类就是加了`@RestController`的类，类中用`@RequestMapping(/path)`注解来实现对应URL的请求处理方法。
-#### 注解：
+
+### 注解：
 `@RequestMapping(/path)`用来修饰方法，`path`指的是URL。它将HTTP请求映射到被注解的方法上<br>
 `@RestController`其实包括了`@ResponseBody`和`@Controller`。<br>
 `@ResponseBody`可以作用于类或者方法，它会将方法的返回值封装为浏览器的响应。<br>
 `@Controller`用于类，指明该类为Controller组件。
+
+#### RequestMapping指定请求方法
+````
+@RequestMapping(value = "/depts",method = RequestMethod.GET)
+````
+
+为了简写可以用如下方法：
+````
+@GetMapping("depts")
+
+//类似的
+@PostMapping("depts")
+@PutMapping("depts")
+````
+
+### 请求响应模式比较
 
 #### 传统模式：
 ````
@@ -67,7 +84,7 @@ public String traditional(HttpServletRequest request){
 
 #### SpringBoot模式：
 
-1. 简单参数
+#### 1. 简单参数
 
 ````
 @RequestMapping("/sim")
@@ -78,7 +95,23 @@ public String simplePara(String name){
 ````
 这里的参数名需要和浏览器请求用的get/post方法中的参数名相同。也是利用return将数据返还给浏览器。
 
-2. 参数和返回值可以是对象，数组啥的，用到在查
+#### 2. 路径参数
+有时参数会通过路径传递
+````
+@DeleteMapping("depts/{id}")
+public Result deleteMethodDepts(@PathVariable Integer id){
+    return deptService.deptDelete(id);
+}
+````
+
+#### 3. Json参数
+json数据在http请求体中，所以需要加@RequestBody，json内容会自动和标注的变量匹配。
+````
+@PostMapping("depts")
+public Result postMethodDepts(@RequestBody Department dept){
+    return deptService.deptAdd(dept);
+}
+````
 
 ## 分层解耦
 以请求响应为例，我们可以将全部的代码都写在@RequsetMapping修饰的方法中，但这不利于维护，也不符合`单一职责原则`。

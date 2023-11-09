@@ -60,5 +60,42 @@
 ### Change current databse
     use DBNAME;
 
+
+
+## Table Level
+### Create Table
+
+    CREATE TABLE table_name
+    (
+    column_name1 data_type(size),
+    column_name2 data_type(size),
+    column_name3 data_type(size),
+    ....
+    )
+
 ### Show tables of the database
     show tables;
+
+### Constrain
+primary key
+
+    ALTER TABLE Persons
+    ADD PRIMARY KEY (P_Id)
+
+auto increment： 这可以更改自增长的初始值，但是好像无法将已有的列声明为自增长。
+
+    ALTER TABLE Persons AUTO_INCREMENT=1
+
+## Record Level
+### Insert
+
+    INSERT INTO table_name
+    VALUES (value1,value2,value3,...);
+
+    INSERT INTO table_name (column1,column2,column3,...)
+    VALUES (value1,value2,value3,...);
+
+### Delete
+
+    DELETE FROM table_name
+    WHERE condition;
