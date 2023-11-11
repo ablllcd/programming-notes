@@ -73,6 +73,17 @@
     ....
     )
 
+也可以添加约束
+
+    CREATE TABLE IF NOT EXISTS `runoob_tbl`(
+    `runoob_id` INT UNSIGNED AUTO_INCREMENT,
+    `runoob_title` VARCHAR(100) NOT NULL,
+    `runoob_author` VARCHAR(40) NOT NULL,
+    `submission_date` DATE,
+    PRIMARY KEY ( `runoob_id` )
+    )ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
 ### Show tables of the database
     show tables;
 
@@ -99,3 +110,12 @@ auto increment： 这可以更改自增长的初始值，但是好像无法将�
 
     DELETE FROM table_name
     WHERE condition;
+
+### Limit
+Limit 可以对查询到的结果进一步筛选，startPostion是开始位置，length是从开始位置读取多少条记录，通常用来分页查询。
+
+    Select *
+    From table
+    Where condition
+    Limit startPosition, length
+
