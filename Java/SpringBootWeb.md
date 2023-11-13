@@ -68,7 +68,7 @@ Tomcat支持Servlet规范（java servlet感觉是java用于web的类，之后需
 @PutMapping("depts")
 ````
 
-### 请求响应模式比较
+### 处理不同请求类型
 
 #### 传统模式：
 ````
@@ -84,8 +84,10 @@ public String traditional(HttpServletRequest request){
 
 #### SpringBoot模式：
 
-#### 1. 简单参数
+方法的参数名需要和浏览器请求用的get/post方法中的参数名相同。也是利用return将数据返还给浏览器。
 
+#### 1. 简单参数
+通常用于get方法，参数在url中
 ````
 @RequestMapping("/sim")
 public String simplePara(String name){
@@ -93,7 +95,7 @@ public String simplePara(String name){
     return "paramater name: "+name;
 }
 ````
-这里的参数名需要和浏览器请求用的get/post方法中的参数名相同。也是利用return将数据返还给浏览器。
+
 
 #### 2. 路径参数
 有时参数会通过路径传递
@@ -105,13 +107,34 @@ public Result deleteMethodDepts(@PathVariable Integer id){
 ````
 
 #### 3. Json参数
-json数据在http请求体中，所以需要加@RequestBody，json内容会自动和标注的变量匹配。
+json数据在http请求体中，需要加@RequestBody，json内容会自动和标注的变量匹配。
+
+注意： @RequestBody通常用于json或者xml数据，它并非适用所有类型的参数体，例如http body 为text或者form-data类型时无法匹配。它要求Content-Type为application/json或者application/xml类型。
 ````
 @PostMapping("depts")
 public Result postMethodDepts(@RequestBody Department dept){
     return deptService.deptAdd(dept);
 }
 ````
+
+#### 4. 文件
+上传文件要求前端三要素：input type = file; method=post; enctype="multipart/form-data"。
+````
+<form action="/upload" method="post" enctype="multipart/form-data">
+    name: <input type="text" name="username"> <br>
+    file: <input type="file" name="file"><br>
+    <input type="submit" value="submit">
+</form>
+````
+
+文件类型储存到MultipartFile类型中，注意变量名和input name要相同
+````
+@PostMapping("/upload")
+public void upload(MultipartFile file) {
+    System.out.println(file.getOriginalFilename());
+}
+````
+MultipartFile封装了一些方法，有获取文件名，获取文件内容，存储文件等功能
 
 ## 分层解耦
 以请求响应为例，我们可以将全部的代码都写在@RequsetMapping修饰的方法中，但这不利于维护，也不符合`单一职责原则`。
@@ -223,3 +246,76 @@ IOC容器中创建和管理的对象，称为Bean。
 @ComponentScan注解用来声明去哪里寻找Bean。默认范围是注解所在的当前包和子包。
 
 @ComponentScan包含在启动类的@SpringBootApplication注解中。
+
+## 配置文件
+### 配置文件类型
+Spring Boot 支持property和yml两种类型的配置文件，它们俩语法不同，但是作用是完全相同的。
+
+### 参数配置化
+项目中有很多代码需要配置参数，例如连接数据库，连接云端服务器等，与其将代码分散配置，不如放在配置文件中统一管理。
+
+#### property
+在property文件中，可以定义变量并赋值
+````
+myTest.v1 = hello
+myTest.v2 = cain
+````
+
+#### @Value
+@Value只能修饰成员变量，框架在启动时会查找application.property中同名变量并为被@Value修饰的类创建实例并且作为bean。
+````
+public someclass{
+    @Value("${myTest.v1}")
+    private String v1;
+
+    @Value("${myTest.v2}")
+    private String v2;
+}
+````
+
+#### @ConfigurationProperties
+@Value在修饰很多值的时候会显得臃肿，@ConfigurationProperties可以修饰整个类，而不是单个成员变量。
+
+创建一个配置类，该类必须有get/set方法以及需要成为bean，所有有@Data和@Component。（一般来说，该配置类会在utils包下）
+
+@ConfigurationProperties(prefix = "")会在property文件中查找prefix为特定值的变量，并根据变量名来匹配类中的成员变量。
+
+````
+@Data
+@Component
+@ConfigurationProperties(prefix = "ali.yun")
+public class AliYunConfigure {
+    private String endpoint;
+    private String accessKeyId;
+    private String bucketName;
+}
+````
+application.property
+````
+ali.yun.endpoint = "endpoint1"
+ali.yun.access-key-id= "123456"
+ali.yun.bucket-name="bucket1"
+````
+
+在使用时需要创建bean对象：
+````
+@Autowired
+private AliYunConfigure aliYunConfigure;
+
+@RequestMapping("/test")
+public void test() {
+    System.out.println(aliYunConfigure.getEndpoint());
+    System.out.println(aliYunConfigure.getAccessKeyId());
+    System.out.println(aliYunConfigure.getBucketName());
+}
+````
+
+### 工具包
+有个工具包可以智能识别被标注的变量，从而在写property时，能够自动补全变量名。
+
+````
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-configuration-processor</artifactId>
+</dependency>
+````
