@@ -319,3 +319,243 @@ public void test() {
     <artifactId>spring-boot-configuration-processor</artifactId>
 </dependency>
 ````
+
+## 登录校验
+### 总体流程
+![Alt text](pic/loginCheckProcess.png)
+
+每次登录成功后，数据库存储一个登录标记，之后用户访问其它数据就出示这个标记。为了避免在每个url下都写标记检查代码，提出了统一拦截的思想。
+
+### 会话
+`会话`：当浏览器和服务器建立连接后，之后的多次请求响应都属于同一个会话，只有浏览器关闭后，会话结束。
+
+`会话跟踪`：对于属于同一个会话的请求响应，很多数据是可以共享的。会话跟踪就是用来检查请求响应是否属于同一个会话。
+
+### 会话跟踪技术：
+
+1. Cookie
+
+![Alt text](pic/cookie.png)
+
+在用户登录后，服务器为创建一个cookie储存用户信息，然后将cookie在http 响应报文的 Set-Cookie字段中传递给浏览器。浏览器收到cookie后，会自动储存到本地。然后该会话中的所有请求报文中，都在Cookie字段设置cookie。
+
+````
+public class SessionController {
+    //设置cookie
+    @GetMapping("/c1")
+    public void setCookie(HttpServletResponse response){
+        response.addCookie(new Cookie("username", "cookie-user"));
+    }
+
+    //获取cookie
+    @GetMapping("/c2")
+    public void getCookie(HttpServletRequest request){
+        Cookie[] cookies = request.getCookies();
+        for (Cookie cookie : cookies) {
+            System.out.println(cookie.getName()+" : "+cookie.getValue());
+        }
+    }
+}
+````
+
+cookie优点：http协议支持
+
+缺点：存储的内容不安全；移动端不支持；跨域不支持；
+
+2. session
+   
+![Alt text](pic/session.png)
+
+session是基于cookie实现的，只是将cookie中的数据存储在服务器的session中。
+
+第一次连接到服务器，服务器创建session，并在该session中存储该会话的信息。然后服务器将session id用cookie传递会浏览器，浏览器存储session id，并在之后的请求中用cookie传递该session id。
+
+````
+@GetMapping("/s1")
+// spring来传递session，如果是第一次请求，此时没有session，spring则创建session
+public void setSession(HttpSession session) {
+    // 在session中存放数据
+    session.setAttribute("username", "user-session");
+}
+
+@GetMapping("/s2")
+public void getSession(HttpServletRequest request) {
+    HttpSession session = request.getSession();
+    System.out.println(session.getAttribute("username"));
+}
+````
+
+3. 令牌
+
+思路和上述一致，第一次连接时，服务器创建令牌并交给浏览器，浏览器存储令牌，并在会话中的每次请求使用令牌。
+
+由于令牌技术并不依赖cookie，所以在移动端也可以使用。
+
+#### Json Web Token (JWT令牌)
+
+![Alt text](pic/jwt.png)
+
+个人感觉和cookie差不多，而且使用base64编码，不是加密，所以感觉安全性没有保证。但是有些库好像实现了加密功能。
+
+此外从图中也可以看出，令牌只是单纯的字符串，并不依赖cookie或者其它机制，完全是自实现的。
+
+````
+public class JWT {
+    private static SecretKey key = Jwts.SIG.HS256.key().build();
+
+    public static String generateJWT(Map<String,Object> load){
+        String jwt = Jwts.builder().claims(load).signWith(key).compact();
+        return jwt;
+    }
+
+    public static Map<String,Object> parsarJWT(String jwt){
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(jwt).getPayload();
+    }
+}
+````
+注意：http 协议的header是可以自定义字段的。所以当用户登录成功并且获取jwt后，客户端可以自己决定如何存储jwt，只要在之后的请求中，在header添加自定义的字段来传输jwt即可。
+
+### Filter 统一拦截
+可以创建一个或多个Filter类来统一拦截访问各个url的请求。
+
+Filter类在Controller类之前获取请求，并且由Filter决定是否将请求交给Controller处理。
+
+![Alt text](pic/filterChain.png)
+
+(1) 该类要实现javax.servlet.Filter接口，并实现它的doFilter方法。该方法指定对拦截url的处理。
+
+(2) 该类需要@WebFilter(urlPatterns = "/*")来指定拦截对象。
+
+(3) 在application类上加@ServletComponentScan注解
+
+(4) 多个Filter的话，会按照Fliter类名的字母顺序进行多次拦截。
+
+#### Filter类
+````
+@WebFilter(urlPatterns = "/*")
+public class DemoFilter implements Filter {
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response,
+            FilterChain chain) throws IOException, ServletException {
+
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        HttpServletResponse httpResponse = (HttpServletResponse) response;
+        String url = httpRequest.getRequestURL().toString();
+
+        // 1. 登录操作，直接放行
+        if(url.contains("login")){
+            // 放行：允许该url去请求和获取响应
+            chain.doFilter(request, response);  
+            return;
+        }
+        // 2. 非登录操作，但携带jwt
+        String jwt = httpRequest.getHeader("token");
+        try {
+            JWT.parsarJWT(jwt);
+        } catch (Exception e) {
+            // 捕获到异常说明jwt错误或者没有jwt
+            // 不放行，并且直接返回信息
+            Result res = new Result(0, "Not login", null);
+            // 由于不再controller中，只能手动转json并写入response
+            String resJsonStr = JSONObject.toJSONString(res);
+            response.getWriter().write(resJsonStr);
+            return;
+        }
+        // 没有进入catch，说明jwt验证通过，可以放行
+        chain.doFilter(request, response);  
+        return;
+    }
+}
+````
+注意：dofilter只是允许url对应的controller处理请求并且修改或创建response，但它并没有发送response给浏览器。只有Filter return之后，才会将response返回。
+
+### Interceptor
+拦截器Interceptor和过滤器Filter在功能上并无差别。不过Filter不属于Spring，会拦截所有资源；但是Interceptor属于Spring，跟框架更好适配并且只拦截Spring环境中的资源。
+
+注意：Interceptor和Filter是可以同时存在的。
+
+![Alt text](pic/interceptor.png)
+
+Interceptor类
+
+(1) preHandle：对拦截的请求进行逻辑处理，返回true表示放行；返回false表示不放行
+
+(2) postHandle：对请求放行后这个函数才调用，如果preHandle返回false，该函数不调用。该函数负责Controller处理后继续进行逻辑处理
+
+(3) afterCompletion：我也不知道
+
+````
+@Component
+public class LoginInterceptor implements HandlerInterceptor{
+
+    // 放行前的操作
+    // 对应登录验证，只需要进行放行前操作
+    @Override   
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+    throws Exception {
+        // 查看jwt
+        String jwt = request.getHeader("token");
+        try {
+            JWT.parsarJWT(jwt);
+        } catch (Exception e) {
+            // 捕获到异常说明jwt错误或者没有jwt
+            // 不放行，并且直接返回信息
+            Result res = new Result(0, "Not login", null);
+            // 由于不再controller中，只能手动转json并写入response
+            String resJsonStr = JSONObject.toJSONString(res);
+            response.getWriter().write(resJsonStr);
+            return false;
+        }
+        // 没有进入catch，说明jwt验证通过，可以放行
+        return true;
+    }
+    
+    @Override   // 放行后的操作
+    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler,
+    ModelAndView modelAndView) throws Exception {
+        // TODO Auto-generated method stub
+        System.out.println("one url is passed");
+    }
+
+    @Override   // 说是渲染后的操作，我也不知道是啥
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex)
+            throws Exception {
+        System.out.println("completion...");
+    }
+}
+````
+
+配置类
+
+对应Interceptor类，需要在配置类中注册。
+````
+@Configuration
+public class WebConfig  implements WebMvcConfigurer{
+    @Autowired
+    LoginInterceptor loginInterceptor;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(loginInterceptor).addPathPatterns("/**").excludePathPatterns("/login");
+    }
+}
+````
+注意：
+![Alt text](pic/interceptorPath.png)
+
+## 异常处理
+在框架中也会有异常发生，例如sql语句执行失败。下层的异常会向上层抛出Mapper->Service->Controller->Spring。
+
+为了捕获和处理异常，我们可以定义异常处理类来处理所有Controller层的异常。
+
+````
+@RestControllerAdvice
+public class ControllerExceptionHandler {
+    @ExceptionHandler(Exception.class) //指明处理的异常类型，这里选的是全部异常
+    public Result ex(Exception ex){
+        ex.printStackTrace();
+        return new Result(0, "Exception happen", null);
+    }
+}
+````
