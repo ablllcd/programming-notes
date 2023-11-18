@@ -559,3 +559,58 @@ public class ControllerExceptionHandler {
     }
 }
 ````
+
+## 事务处理
+
+事务是指一组不可分割的操作集合，要么全都执行，要么全都不执行。
+
+Service层可能会设计多个数据库操作，但是我们希望它们要么都发生，要么都不发生。
+
+在spring中，只需要在方法/类/接口上加@Transactional即可，框架会自动将方法配置为事务。
+````
+@Transanctional
+public Result deptDelete(int id) {
+    int affectedNum = deptMapper.deptDelete(id);
+    empMapper.deleteEmp(id);
+}
+````
+
+此外@Transacntional也可以进行配置。默认情况下，@Transanctional遇到runtimeException时才会回滚，可通过`@Transactional(rollbackFor = Exception.class)`来配置为所有异常都回滚。
+
+也可以配置事务之间的传播行为来处理多个事务的情景，这个略微复杂，有需要再查看。
+
+## AOP Aspect oriented programming
+
+面向切片编程其实就是面向特定方法编程。
+
+例子：如何统计Service层所有方法的耗时？相较于改变每个方法的代码，可以声明AOP程序来统一更改。
+
+### quick start
+（1） 添加依赖
+````
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-aop</artifactId>
+</dependency>
+````
+
+（2） 创建一个AOP包，并写AOP类
+````
+@Component
+@Aspect     //声明为AOP程序
+public class TimeAspect {
+    // @Around 指定对哪些方法进行修改
+    @Around("execution(* com.example.itheima.service.*.*(..))")
+    public Object recordTime(ProceedingJoinPoint joinPoint) throws Throwable{
+        long beginTime = System.currentTimeMillis();
+
+        // 调用原始方法运行，Object返回值也是原始方法的返回值，继续返回就行
+        Object result = joinPoint.proceed();
+
+        long endTime = System.currentTimeMillis();
+        System.out.println(joinPoint.getSignature()+" costs: "+(endTime-beginTime));
+        return result;
+    }
+}
+````
+
