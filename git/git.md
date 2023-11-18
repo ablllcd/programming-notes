@@ -122,7 +122,7 @@ git rest --hard：这个会删除工作区和暂存区的内容，它旨在真�
 ````
 C:\Users\Cc>ssh-keygen -t rsa -b 4096
 
-// 选择密钥保存的位置
+    // 选择密钥保存的位置
 Enter file in which to save the key (C:\Users\Cc/.ssh/id_rsa): D:\Programming\Git\github-ssh-key
 ````
 2. 将生成的公钥（*.pub）文件拷贝到github设置里的`SSH and GPG Keys`，选择new SSH Key。
