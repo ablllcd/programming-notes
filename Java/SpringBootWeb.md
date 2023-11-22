@@ -614,3 +614,62 @@ public class TimeAspect {
 }
 ````
 
+### 通知
+AOP 类中的方法被成为通知，通知作用于的方法被称为目标方法。
+
+#### 通知类型
+![Alt text](pic/notice.png)
+
+#### 通知执行顺序
+如果多个AOP类作用于相同的目标方法，可以通过@Order()注解来指示AOP类的执行顺序。
+
+
+### 切入点表达式
+切入点表达式就是“execution(* com.example.itheima.service.*.*(..))”，它声明了去哪找目标方法，被称为切入点表达式。
+
+切入点表达式有多种类型，这里介绍exectuion和@annotation两种。
+
+#### Execution
+![Alt text](pic/execution.png)
+![Alt text](pic/execution2.png)
+````
+@Around("execution(* com.example.itheima.service.*.*(..))")
+````
+
+其中路径必须到达方法。即`com.example.itheima.service`到达service包；`.*`选择service包下的所有类；`.*.*`选择了service包下所有类的所有方法；(..)表示任意参数类型的方法都被选择。此外，开头的 `*`表示任意返回类型的方法都被选择。
+
+#### @Annotation
+@Annotation是基于注解定位切入点的。
+
+1. 自定义注解
+2. 对目标方法添加自定义注解
+3. 在AOP类的方法上，添加@Annotation(自定义注解的全类名)作为切入点表达式。
+
+#### 抽取切入点表达式
+由于AOP中每个方法都要写切入点表达式，可以用@Pointcut来将它提取出来。
+
+````
+@Component
+@Aspect
+public class TestAspect {
+    @Pointcut("execution(* com.example.itheima.controller.*.*(..))")
+    public void pt(){}
+
+    @Before("pt()")
+    public void Before(){
+        System.out.println("Before ...");
+    }
+
+    @After("pt()")
+    public void After(){
+        System.out.println("After ...");
+    }
+}
+````
+
+### 连接点
+在AOP的方法中，可以通过连接点参数来获取目标方法的相关信息，例如类名，方法名，参数等。
+
+对于@Around通知类型，使用ProceedingJoinPoint参数；对于其它类型，使用JoinPoint参数。其中ProceedingJoinPoint是JoinPoint的子类。
+
+
