@@ -19,7 +19,7 @@ docker ps   // 只查看已激活的
 docker ps -a
 ````
 
-#### 操作容器
+#### 控制容器
 ````
 docker run --name contianerName imageName //创建container来放置image并运行
 
@@ -28,4 +28,13 @@ docker stop container
 docker kill container //强制停止
 
 docker rm  contianer    //删除container
+````
+
+#### 操作容器
+````
+// 拷贝本机数据到容器里
+docker cp YOUR_PATH_TO_FOLDER/DBLP-Lab2.tar.gz [containnerName]:/  
+
+// 运行容器的shell
+docker exec -it mycassandra /bin/sh
 ````
