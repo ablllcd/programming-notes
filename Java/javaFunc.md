@@ -57,7 +57,7 @@ classpath只是声明去哪里找包，还需要把要用到jar包下载到class
 如果是引用当前包下的类不需要`import`，如果是引用其它包下的类，则需要使用`import`关键字。
 
 
-## Reflection
+## Reflection 反射
 反射是用来获取类和操作类的，Java也提供了`Class`关键字来引用类。
 
 其应用是可以从更高的层次上操作类，增强泛用性
@@ -78,3 +78,83 @@ classpath只是声明去哪里找包，还需要把要用到jar包下载到class
         System.out.println(s3.getName());
     }
 
+
+## 代理
+
+代理模式是常用的设计模式之一，其特征是代理类与被代理类有相同的接口，代理类可以为被代理类方法执行进行前置后置处理，增强被代理类方法
+
+### 动态代理
+
+没完全明白，待修改
+
+动态代理主要依赖java.lang.reflect.Proxy类，它有一个方法可以动态创建代理类。动态代理的意思是指该类是在运行时创建的，没有预生成的class文件。
+
+1. 首先创建接口和目标类
+
+```
+public interface ICalculator {
+    public int add(int a,int b);
+    public int delete(int a,int b);
+}
+```
+
+```
+public class Calculator implements ICalculator{
+    @Override
+    public int add(int a, int b) {
+        return a+b;
+    }
+
+    @Override
+    public int delete(int a, int b) {
+        return a-b;
+    }
+}
+```
+
+2. 根据Proxy.newProxyInstance创建要求的参数：
+
+    ClassLoader 和 interfaces 跟反射有关，不是很明白具体作用，大概是拿到接口类，知道接口有哪些，从而创建对应的实现类
+
+    InvocationHandler是重要的类，对目标类的增强就是在这里实现的
+
+    大概流程为：
+
+    ![Alt text](pic/dynamicProxy.png)
+
+```
+public class LoggerProxyFactory {
+    private Object target;
+    public LoggerProxyFactory(Object target){
+        this.target = target;
+    }
+
+    public Object getProxyInstance(){
+        ClassLoader loader = target.getClass().getClassLoader();
+        Class[] interfaces = target.getClass().getInterfaces();
+        InvocationHandler invocationHandler = new InvocationHandler(){
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                System.out.println(method.getName()+" is called");
+                Object result = method.invoke(target,args);
+                return result;
+            }
+        };
+        return Proxy.newProxyInstance(loader,interfaces,invocationHandler);
+    }
+}
+```
+
+3. 创建代理类并使用
+
+```
+@Test
+public void dynamicProxy(){
+    Calculator c = new Calculator();
+    LoggerProxyFactory proxyFactory = new LoggerProxyFactory(c);
+    ICalculator cProxy = (ICalculator) proxyFactory.getProxyInstance();
+    System.out.println(cProxy.add(3,4));
+}
+```
+
+注意：动态代理类的本质是使用Proxy.newProxyInstance来创建，而代理类增加的动作在InvocationHandler里实现。而上述中的LoggerProxyFactory是一种工厂思想，可有可无。

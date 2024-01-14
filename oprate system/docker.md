@@ -47,13 +47,16 @@ docker kill container //强制停止
 
 ![Alt text](imgs/dockerRun.png)
 
-#### 操作容器
+#### 其它操作
 ````
 // 拷贝本机数据到容器里
 docker cp YOUR_PATH_TO_FOLDER/DBLP-Lab2.tar.gz [containnerName]:/  
 
 // 运行容器的shell
 docker exec -it mycassandra /bin/sh
+
+// 创建虚拟网络，允许container相互交流
+docker network create [NetName]
 ````
 
 

@@ -360,3 +360,486 @@ docker run -e RABBITMQ_DEFAULT_USER=cyw -e RABBITMQ_DEFAULT_PASS=123456 --name R
 
 3. 打开浏览器输入 `localhost:15672/` 来验证
 
+### Spring AMQP
+
+AMQP 是 Advanced Message Queue Protocol,是独立于平台和程序的一套消息队列协议。 而Spring AMQP则是在spring框架中基于该协议定义了一套API。Spring AMQP包含两部分：Spring-amqp是基础抽象，而spring-rabbit是基于rabbitMQ的实现。
+
+#### 简单队列 Quick Start
+
+1. 添加依赖
+
+```
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+```
+
+2. 修改配置文件
+```
+spring.rabbitmq.host=localhost
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=cyw
+spring.rabbitmq.password=123456
+spring.rabbitmq.virtual-host=/
+```
+
+3. 生产者发送消息
+
+```
+@SpringBootTest
+class DemoApplicationTests {
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    @Test
+    void sendMessage2SimpleQueue(){
+        String queue = "Simple.queue";
+        String message = "hello world";
+        rabbitTemplate.convertAndSend(queue,message);
+    }
+}
+```
+
+4. 消费者接受消息
+
+```
+@Component
+public class MQListener {
+    @RabbitListener(queues = "Simple.queue")
+    public void simpleQueuePrint(String message){
+        System.out.println("Simple queue receive message: "+message);
+    }
+}
+```
+
+消费者需要创建一个类，然后注册为bean交给spring管理。Spirng监听Simple.queue队列，如果有消息就调用对应方法。
+
+#### 工作队列
+
+工作队列是RabbitMQ中另一种模型，它和简单队列相比区别不大。只是简单队列假设只有一个消费者，而工作队列假设有多个消费者。
+
+```
+@Component
+public class MQListener {
+    @RabbitListener(queues = "Simple.queue")
+    public void simpleQueuePrint(String message) throws InterruptedException {
+        System.out.println("Consumer1: Simple queue receive message: "+message);
+        Thread.sleep(20);
+    }
+
+    @RabbitListener(queues = "Simple.queue")
+    public void simpleQueuePrint2(String message) throws InterruptedException {
+        System.err.println("Consumer2: Simple queue receive message: "+message);
+        Thread.sleep(100);
+    }
+}
+```
+
+这里两个消费者的性能不同，被分配了相同数量的消息，这是因为RabbitMQ的消息预取机制，可在设置文件里修改，从而根据消费者的实际处理性能来分配消息。
+
+```
+spring.rabbitmq.listener.simple.prefetch=1
+```
+
+#### 发布，订阅模型
+
+上述的两种模型都是publisher直接将消息发送到队列中，而队列中的每条消息只能给一个消费者。如果要一条消息发送给多个消费者，则需要多个队列。为此，可以添加一个exchange来负责管理队列，publisher只需要将消息发送给exchange。（注意：exchange并不存储消息，消息只在队列存储）
+
+![Alt text](pic/exchanger.png)
+
+#### Fanout exchange
+
+1. 消费者创建exchange和queues，并将其绑定到exchange
+
+```
+@Configuration
+public class ExchangeConfiguration {
+    @Bean
+    public FanoutExchange createFanoutExchange(){
+        return new FanoutExchange("cc.fanout");
+    }
+
+    @Bean
+    public Queue Queue1(){
+        return new Queue("fanout.queue1");
+    }
+
+    @Bean
+    public Queue Queue2(){
+        return new Queue("fanout.queue2");
+    }
+
+    @Bean
+    public Binding bindQueue1(Queue Queue1, FanoutExchange createFanoutExchange){
+        return BindingBuilder.bind(Queue1).to(createFanoutExchange);
+    }
+
+    @Bean
+    public Binding bindQueue2(Queue Queue2, FanoutExchange createFanoutExchange){
+        return BindingBuilder.bind(Queue2).to(createFanoutExchange);
+    }
+}
+```
+
+2. 消费者监听队列
+
+```
+@RabbitListener(queues = "fanout.queue1")
+public void fanoutQueuePrint1(String message) {
+    System.err.println("Consumer1: fanout queue1 receive message: "+message);
+}
+
+@RabbitListener(queues = "fanout.queue2")
+public void fanoutQueuePrint2(String message) {
+    System.err.println("Consumer2: fanout queue2 receive message: "+message);
+}
+```
+
+3. 生产者向exchange发送消息
+
+```
+@Test
+void sendMessage2FanoutQueue() {
+    String exchange = "cc.fanout";
+    String message = "hello every";
+    rabbitTemplate.convertAndSend(exchange,"",message);
+}
+```
+
+#### Direct Exchange
+
+与Fanout 不同的是， Direct exchange使用了binding key 和 routing key 来对绑定到exchange的queues进行分组。
+
+1. 创建exchange,queue和binding，并且监听对应queue。（无需写配置类，直接在@RabbitListener注解中直接创建）
+
+```
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "direct.queue1"),
+        exchange = @Exchange(name = "cc.direct", type = ExchangeTypes.DIRECT),
+        key = {"key1", "key2"}
+))
+public void directQueuePrint1(String message){
+    System.out.println("Consumer1: direct queue1 receives: "+message);
+}
+
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "direct.queue2"),
+        exchange = @Exchange(name = "cc.direct", type = ExchangeTypes.DIRECT),
+        key = {"key3", "key2"}
+))
+public void directQueuePrint2(String message){
+    System.out.println("Consumer2: direct queue2 receives: "+message);
+}
+```
+
+2. 生产者发送消息
+
+```
+@Test
+void sendMessage2DirectExchange() {
+    String exchange = "cc.direct";
+    String m1 = "Key1 message";
+    String m2 = "Key2 message";
+    String m3 = "Key3 message";
+    rabbitTemplate.convertAndSend(exchange,"key1",m1);
+    rabbitTemplate.convertAndSend(exchange,"key2",m2);
+    rabbitTemplate.convertAndSend(exchange,"key3",m3);
+}
+```
+
+#### Topic exchange
+
+Topic exchange和Direct exchange没有什么差别，只是Direct exchange 使用key列表来进行分组；而Topic exchange只使用一个key。这个可以要求格式为domain1.domain2...，例如China.news。而消费者可以使用通配符来选择接收哪些消息，例如#.news。
+
+```
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "topic.queue1"),
+        exchange = @Exchange(name = "cc.topic", type = ExchangeTypes.TOPIC),
+        key = "#.news"
+))
+public void TopicQueuePrint1(String message){
+    System.out.println("Consumer1: topic queue1 receives: "+message);
+}
+```
+
+```
+@Test
+void sendMessage2TopicExchange() {
+    String exchange = "cc.topic";
+    String m1 = "Message about China's news";
+    String m2 = "Message about America's news";
+    rabbitTemplate.convertAndSend(exchange,"China.news",m1);
+    rabbitTemplate.convertAndSend(exchange,"America.news",m2);
+}
+```
+
+### 消息类型转换
+
+在发消息的过程中，除了字符串类型还可以发任意Object类型，只需要保证发送者和接收者使用的类型相同即可，无需我们实现类型转换。
+
+在spring底层默认使用JDK序列化和反序列化，但是也可以导入包来用json格式来传输数据。
+
+## Elastic Search 搜索
+
+### 倒排索引
+
+![Alt text](pic/reseredIndex.png)
+
+倒排索引就是将`常见搜索内容`划分为`词条`(term)，然后对词条创建索引。这样用户进行搜索的时候也是将`搜索内容`划分为词条，然后快速搜索。
+
+### 创建ES
+
+1. docker pull image
+2. 创建容器
+
+```
+docker run -d --name es -e "discovery.type=single-node" --privileged --network Mynet -p 9200:9200 -p 9300:9300 elasticsearch:7.12.1
+```
+
+3. 打开localhost:9200测试
+
+### 创建Kibana
+
+1. 下载和ES版本相同的image
+2. 创建容器
+
+```
+docker run -d --name kibana -e ELASTICSEARCH_HOSTS=http://es:9200 --network=Mynet -p5601:5601 kibana:7.12.1
+```
+
+3. 打开 localhost:5601测试
+
+### ES 创建索引库（也就是数据库）
+
+创建索引库时，需要设置索引库的格式，就像mysql create table要声明变量和变量类型一样。
+
+下列是一下常见关键字
+
+![Alt text](pic/ESMapping.png)
+
+示例
+
+```
+PUT /heima
+{
+  "mappings": {
+    "properties": {
+      "info":{
+        "type": "text",
+        "analyzer": "standard"
+      },
+      "email":{
+        "type": "keyword"
+      }
+    }
+  }
+}
+```
+
+### 查看、修改、删除索引库
+
+个人感觉ES属于NoSQL，而且ES是基于索引的，所以对原有索引库的修改是不允许的，但是允许添加新字段。
+
+```
+GET /[索引库名]
+
+PUT /[索引库名]/_mapping
+{
+  "properties":{
+    "age":{
+      "type" : "integer"
+    }
+  }
+}
+
+DELETE /[索引库名]
+```
+
+### 增删改查文档
+
+文档就是索引库中的数据
+
+```
+// 添加
+// 修改整个文档
+POST /[索引库名]/_doc/[文档ID]
+{
+  "info":"A teacher from Hong Kong University",
+  "email":"xx@connect.hku.hk",
+  "age":"55"
+}
+
+// 修改部分文档
+POST /[索引库名]/_update/[文档ID]
+{
+    "doc":{
+        key:value
+    }
+}
+
+// 查看
+GET /heima/_doc/1
+
+// 删除
+DELETE /heima/_doc/1
+```
+
+### 查询文档
+```
+# 查询全部
+GET /person/_search
+{
+  "query": {
+    "match_all": {}
+  }
+}
+
+# 单字段查询
+GET /person/_search
+{
+  "query": {
+    "match": {
+      "name": "Cao"
+    }
+  }
+}
+
+# 多字段查询
+GET /person/_search
+{
+  "query": {
+    "multi_match": {
+      "query": "com yuwei",
+      "fields": ["name","email"]
+    }
+  }
+}
+
+# 精确查询
+GET /person/_search
+{
+  "query": {
+    "term": {
+      "age": {
+        "value": "12"
+      }
+    }
+  }
+}
+
+# 范围查询
+GET /person/_search
+{
+  "query": {
+    "range": {
+      "age": {
+        "gte": 10,
+        "lte": 30
+      }
+    }
+  }
+}
+
+```
+
+### 修改算分函数
+![Alt text](image.png)
+
+### 在JAVA中使用ES
+
+#### Quick Start
+1. 引入依赖
+
+```
+<dependency>
+    <groupId>org.elasticsearch.client</groupId>
+    <artifactId>elasticsearch-rest-high-level-client</artifactId>
+    <version>7.12.1</version>
+</dependency>
+
+// 覆盖父工程版本
+<elasticsearch-client.version>7.12.1</elasticsearch-client.version>
+```
+
+2. 创建常量类来存储请求语句
+```
+public class ESConstant {
+    public static final String createPersonIndex ="{\n" +
+            "  \"mappings\": {\n" +
+            "    \"properties\": {\n" +
+            "      \"name\":{\n" +
+            "        \"type\": \"text\",\n" +
+            "        \"analyzer\": \"standard\"\n" +
+            "      },\n" +
+            "      \"email\":{\n" +
+            "        \"type\": \"keyword\"\n" +
+            "      },\n" +
+            "      \"age\":{\n" +
+            "        \"type\": \"integer\"\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}";
+}
+```
+
+3. 创建restClient对象，构建请求并发送
+
+```
+void ESTest() throws IOException {
+    // 初始化restClient
+    RestHighLevelClient restClient = new RestHighLevelClient(RestClient.builder(
+            HttpHost.create("http://localhost:9200")
+    ));
+
+    // 1. 创建Request对象
+    CreateIndexRequest request = new CreateIndexRequest("person");
+    // 2. 声明Request语句
+    request.source(ESConstant.createPersonIndex, XContentType.JSON);
+    // 3. 发送Request请求
+    restClient.indices().create(request, RequestOptions.DEFAULT);
+}
+```
+
+#### 删除索引库、查看索引库是否存在
+
+```
+// 删除索引库
+DeleteIndexRequest request = new DeleteIndexRequest("person");;
+restClient.indices().delete(request, RequestOptions.DEFAULT);
+
+// 查看索引库是否村子
+GetIndexRequest request = new GetIndexRequest("person");;
+boolean exist = restClient.indices().exists(request, RequestOptions.DEFAULT);
+```
+
+#### 插入文档
+
+```
+// 1. 创建Request对象
+IndexRequest request = new IndexRequest("person").id("1");
+// 2. 添加请求内容
+request.source("{\"name\":\"cyw\",\"email\":\"cyw@qq.com\",\"age\":20}",XContentType.JSON);
+// 3. 发送Request请求
+restClient.index(request,RequestOptions.DEFAULT);
+```
+
+**注意**：这里request.source其实就是json类型的字符串而已。在实际应用中，可以用类来存储数据，并且用json插件直接将类转为json字符串即可。这样也方便程序使用。
+
+#### 查看文档
+```
+// 查看文档
+GetRequest request = new GetRequest("person").id("1");
+GetResponse response = restClient.get(request,RequestOptions.DEFAULT);
+System.out.println(response.getSourceAsString());
+
+// 更新文档
+UpdateRequest request = new UpdateRequest("person", "1");
+request.doc("name","Caoyuwei");
+restClient.update(request,RequestOptions.DEFAULT);
+
+// 删除文档
+DeleteRequest request = new DeleteRequest("person", "1");
+restClient.delete(request,RequestOptions.DEFAULT);
+```

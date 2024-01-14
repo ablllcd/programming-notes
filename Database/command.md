@@ -111,6 +111,12 @@ auto increment： 这可以更改自增长的初始值，但是好像无法将�
     DELETE FROM table_name
     WHERE condition;
 
+### Modify
+
+    UPDATE table_name
+    SET column1 = value1, column2 = value2, ...
+    WHERE condition;
+
 ### Limit
 Limit 可以对查询到的结果进一步筛选，startPostion是开始位置，length是从开始位置读取多少条记录，通常用来分页查询。
 
@@ -119,3 +125,10 @@ Limit 可以对查询到的结果进一步筛选，startPostion是开始位置�
     Where condition
     Limit startPosition, length
 
+
+## Global Variable
+
+检查端口号
+```
+show global variables like 'port';
+```
