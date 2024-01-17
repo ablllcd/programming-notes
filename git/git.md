@@ -83,8 +83,11 @@ git commit -a -m "message"  // 提交全部文件
 
 #### 删除文件
 ````
-// 文件夹中删除文件
-git add deletedFile //通知暂存区删除文件
+rm file1.txt    // 工作区中删除文件
+git add file1.txt //通知暂存区删除文件
+git commit //通知本地仓库删除文件
+
+git rm file1.txt // 工作区和暂存区中删除文件
 git commit //通知本地仓库删除文件
 ````
 
@@ -115,6 +118,28 @@ git rest --hard：这个会删除工作区和暂存区的内容，它旨在真�
 我们可以使用 git diff 命令来比较不同版本之间的差异。
 
 ![Alt text](pic/gitDIff.png)
+
+## 远程仓库
+
+添加、编辑远程仓库
+
+```
+git remote：列出当前仓库中已配置的远程仓库。
+git remote -v：列出当前仓库中已配置的远程仓库，并显示它们的 URL。
+git remote add <remote_name> <remote_url>：添加一个新的远程仓库。
+git remote rename <old_name> <new_name>：将已配置的远程仓库重命名。
+git remote remove <remote_name>：从当前仓库中删除指定的远程仓库。
+git remote set-url <remote_name> <new_url>：修改指定远程仓库的 URL。
+git remote show <remote_name>：显示指定远程仓库的详细信息，包括 URL 和跟踪分支。
+```
+
+同步远程仓库
+```
+git fetch
+git merge
+
+git pull (等同于git fetch+git merge)
+```
 
 ## github
 ### 配置SSH （还是有问题，暂且用http吧）
