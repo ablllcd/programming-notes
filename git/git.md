@@ -139,6 +139,7 @@ git fetch
 git merge
 
 git pull (等同于git fetch+git merge)
+git push
 ```
 
 ## github

@@ -14,6 +14,18 @@ Lombok是一个代码生成器，使用注解帮助生成getter setter等。
 
 ```
 
+## Jackson
+
+Java本身不能处理json数据，需要导入依赖
+```
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.16.1</version>
+</dependency>
+```
+如果配合MVC使用，在spring配置类上加@EnableWebMvc注解就行。
+
 ## XML配置文件 转 配置类
 
 见：https://blog.csdn.net/zgq15228328671/article/details/102593103
@@ -95,7 +107,9 @@ public class BeanConfig {
 
 ```
 @Configuration
-// 开启mvc注解
+// 开启mvc注解，等同于
+// 该注解是选择了MapperHandler初始化的方式
+// 它会创建jackson类，HandlerMapping，HandlerAdapter类都加入到IOC中
 @EnableWebMvc
 // WebMvcConfigurer类中有很多MVC相关的注解
 public class DispatcherServletConfig implements WebMvcConfigurer {
@@ -103,6 +117,18 @@ public class DispatcherServletConfig implements WebMvcConfigurer {
     // 配置视图控制器
     public void addViewControllers(ViewControllerRegistry registry) {
         registry.addViewController("/index").setViewName("index");
+    }
+    
+    // 配置JSP视图解析器
+    @Override
+    public void configureViewResolvers(ViewResolverRegistry registry) {
+        registry.jsp("WEB-INF/views/",".jsp");
+    }
+
+    // 开启静态资源
+    @Override
+    public void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) {
+        configurer.enable();
     }
 }
 ```

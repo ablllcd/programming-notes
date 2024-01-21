@@ -31,7 +31,7 @@
 </project>
 ```
 
-2. 这时项目结构会改变，多出一个web模块：
+2. 这时项目结构会改变，多出一个web模块（没有的话也可以重启一下idea可能就刷新了/如果没有的话，自己添加一个也是一样的）：
 
 ![Alt text](pic/idea-web1.png)
 
@@ -40,6 +40,8 @@
 ![Alt text](pic/idea-web2.png)
 
 4. 此时web模块已经创建完成，对应的artifacts已经生成（用于idea配置tomcat）
+
+**注意，一定要检查artifact输出的结构是否正确，是否包含lib！！！**
 
 ![Alt text](pic/idea-web3.png)
 

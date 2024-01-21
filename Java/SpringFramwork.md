@@ -73,6 +73,12 @@ IOC (Inverse of control)是spring 框架中在一个重要思想：对象的创�
 
 Spring中使用IOC容器来负责对象的实例化和初始化，并控制对象和对象之间的依赖关系。由IOC管理的对象被称为bean。
 
+IOC本质上也是一个JAVA类来实现的，只要实现了BeanFactory接口的JAVA类都可以当作IOC。JAVA中IOC接口和实现类为：
+
+![Alt text](pic/SpringIOC-Structure.png)
+
+
+
 ## 基于 XML 进行 Bean 管理
 
 在xml文件中通过id和class定义bean元素，id可以自定义，class是类的全类名：
@@ -432,9 +438,9 @@ IOC容器主要依赖反射技术和注解来实现
 
 ## AOP
 
-AOP （Aspect Oriented Programming）是指面向切片编程，它是一种在不改变源代码的情况下，通过预编译技术和动态代理技术，实现动态功能增强的技术。
+AOP （Aspect Oriented Programming）是指面向切片编程，它是一种改善面向对象编程的思想。
 
-其产生思路如下：
+**其产生思路如下：**
 
 JAVA使用OOB编程，虽然OOB相较于函数式编程有很大进步，但是它本身还是有一些问题的。
 
@@ -453,6 +459,10 @@ JAVA使用OOB编程，虽然OOB相较于函数式编程有很大进步，但是�
 ![Alt text](pic/AOP-aop.png)
 
 我不在创建类了，而是创建一个Aspect（本质上也是一个特殊类），在Aspect里写日志功能，并且通过Aspect Configuration来指明我要在哪个类里的什么时机调用（例如在Object A的function 1调用后调用Logging Aspect）。 这样我修改Logging Aspect后，对于其它类的代码完全不需要修改。
+
+**AOP思想的技术实现**
+
+有一个设计模式的思想和AOP高度重合，那就是代理技术（具体见java/javaFunc.md）。而java中实现的动态代理类就可以用来实现AOP思想，但是动态代理用起来非常麻烦，所以spring就自己实现了srping AOP框架来封装了动态代理类，从而方便地实现了AOP思想。
 
 ### Quick Start
 

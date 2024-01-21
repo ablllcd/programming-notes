@@ -63,7 +63,7 @@ resources/mybatis-config.xml
         </environment>
     </environments>
 
-    // 指明ORM映射文件
+    // 指明Mapper实现文件
     <mappers>
         <mapper resource="mappers/EmployeeMapper.xml"/>
     </mappers>
@@ -327,3 +327,189 @@ public Map<String,Object> getAllUsers();
 </select>
 ```
 
+## 查询结果映射
+
+### table字段名和成员变量不一致
+1. 数据库查询时使用别名
+
+
+    可以在sql中的select语句中利用as来进行名称转换，例如：
+    ```
+    <select id="getByID" resultType="org.example.pojo.Employee">
+        select uid as id,name,age,gender,position from employee where uid = #{id}
+    </select>
+    ```
+
+2. 下划线命名法转驼峰命名法
+
+    在mybatis配置文件中添加setting
+    ```
+    <settings>
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+    </settings>
+    ```
+
+3. 使用resultMap
+
+    在映射文件中使用resultMap标签，先从select映射到resultMap，在映射到实体类。（resultType流程好像是一致的，只是使用了默认的resultMap）
+    ```
+    <resultMap id="empResultMap" type="org.example.pojo.Employee">
+        <id property="id" column="uid"/>
+        <result property="name" column="name"/>
+    </resultMap>
+
+    <select id="getAllUsers" resultType="map">
+        select * from employee
+    </select>
+    ```
+
+### 多对一映射
+
+在数据库中经成存在多对一，一对多的情况，比如employee里记录department的id。但是在java中，employee类的department不是一个int类型的ID，而是一个department的引用。为此需要特殊的映射关系：
+
+1. 级联属性赋值
+   
+    ```
+    <resultMap id="empResultMapper" type="org.example.pojo.Employee">
+        <id property="id" column="uid"/>
+        <result property="department.name" column="departName"/>
+        <result property="department.id" column="dept_id"/>
+    </resultMap>
+
+    <select id="getAllEmps" resultMap="empResultMapper">
+        select employee.*,dept.name as departName,dept.dept_id
+        from employee,dept,dept_emp
+        where employee.uid=dept_emp.uid and dept_emp.dept_id=dept.dept_id;
+    </select>
+    ```
+
+    其中使用JOIN来合并表信息，在resultMap中使用department.name的方式进行赋值。不过需要注意：如果两个员工处于同一个部门，每个员工都会创建一个新的部门，造成内存浪费。
+
+2. association标签来配置嵌套关系：
+
+    ```
+    <resultMap id="empResultMapper" type="org.example.pojo.Employee">
+        <id property="id" column="uid"/>
+        <association property="department" javaType="org.example.pojo.Department">
+            <id property="id" column="dept_id"/>
+            <result property="name" column="departName"/>
+        </association>
+    </resultMap>
+
+    <select id="getAllEmps" resultMap="empResultMapper">
+        select employee.*,dept.name as departName,dept.dept_id
+        from employee,dept,dept_emp
+        where employee.uid=dept_emp.uid and dept_emp.dept_id=dept.dept_id;
+    </select>
+    ```
+3. 分步查询
+
+    ```
+    <resultMap id="empResultMapper" type="org.example.pojo.Employee">
+        <id property="id" column="uid"/>
+        <association property="department"
+                     select="org.example.mapper.DeptMapper.getDeptByID"
+                     column="dept_id">
+        </association>
+    </resultMap>
+
+    <select id="getAllEmps" resultMap="empResultMapper">
+        select * from employee,dept_emp where employee.uid=dept_emp.uid
+    </select>
+    ```
+    resultMap对于查询到的每一行，除了根据名称赋值外，还将dept_id作为参数调用org.example.mapper.DeptMapper.getDeptByID方法，其返回的Dept类型直接赋值给employee的dept。
+
+    分布查询的主要用途为`延迟加载`，例如开启延迟加载后，调用getAllEmps获取的Emp列表并没有Dept对象，只有真的用到的时候才会执行association里的sql语句（也就是分布查询才允许延迟加载这种优化）。
+
+    ```
+    <association property="department"
+                     select="org.example.mapper.DeptMapper.getDeptByID"
+                     column="dept_id"
+                     fetchType="lazy">
+    </association>
+    ```
+
+### 一对多映射
+
+一对多映射就是department类中有一个列表来存储Employee。
+
+1. 使用collection标签
+
+    ```
+    <resultMap id="deptResultMap" type="org.example.pojo.Department">
+        <id property="id" column="dept_id"/>
+        <result property="name" column="dname"/>
+        <collection property="employees" ofType="org.example.pojo.Employee">
+            <id property="id" column="uid"/>
+            <result property="name" column="name"/>
+            <result property="age" column="age"/>
+            <result property="gender" column="gender"/>
+            <result property="position" column="position"/>
+        </collection>
+    </resultMap>
+    <select id="getDeptAndEmpByID" resultMap="deptResultMap">
+        select employee.*, dept.name as dname, dept.dept_id
+        from dept,dept_emp,employee
+        where dept.dept_id=dept_emp.dept_id
+        and employee.uid=dept_emp.uid
+        and dept.dept_id = #{id}
+    </select>
+    ```
+    这是一次将结果都查出来，然后在resultMap中一一赋值。其中列表对应collection标签。
+
+2. 分步查询
+
+    ```
+    <resultMap id="deptResultMap" type="org.example.pojo.Department">
+        <id property="id" column="dept_id"/>
+        <result property="name" column="name"/>
+        <collection property="employees"
+                    select="org.example.mapper.EmployeeMapper.getEmpsByDept"
+                    column="dept_id">
+        </collection>
+    </resultMap>
+    <select id="getDeptAndEmpByID" resultMap="deptResultMap">
+        select * from dept where dept_id=#{id}
+    </select>
+    ```
+
+## 额外辅助功能
+
+### 1. 返回自动递增的主键
+
+```
+public int insertUser(Employee employee);
+```
+
+注意useGeneratedKeys表明要返回自动生成的key，keyProperty是指返回值要传给哪个参数。
+```
+<insert id="insertUser" useGeneratedKeys="true" keyProperty="uid">
+    insert into employee values (null,#{name},#{age},#{gender},#{position})
+</insert>
+```
+
+```
+@Test
+public void insertUser(){
+    EmployeeMapper employeeMapper = sqlSession.getMapper(EmployeeMapper.class);
+    Employee employee = new Employee(-1, "cain", 23, 1, "worker");
+    employeeMapper.insertUser(employee);
+    sqlSession.commit();
+    System.out.println(employee);
+}
+```
+
+### 2. 事务功能
+
+配置文件中的事务管理类型为JDBC，默认需要手动提交事务：
+
+```
+employeeMapper.insertUser(employee);
+sqlSession.commit();
+```
+
+如果希望每个操作都自动提交，创建sqlSession时可以设置：
+
+```
+sqlSession = sqlSessionFactory.openSession(true);
+```

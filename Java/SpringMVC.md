@@ -8,9 +8,29 @@
 
 ## Spring MVC 概述
 
-而Spring MVC是Spring中的一个框架，可以方便MVC类型的程序开发。既然是框架，自然提供了半成品代码方便程序的构建。而且作为Spring的一个子项目，它可以和Spring的其它框架衔接，例如使用Spring Framwork的IOC容器。
+Spring MVC是Spring中的一个框架，它可以和Spring的其它框架衔接，例如使用Spring Framwork的IOC容器，这也使得Spring MVC成为主流的`表述层（控制层）框架`。也就是说，虽然名字叫做Spring MVC，但实际做的工作只有Controller层相关的。
 
-Spring MVC的核心是封装了Servlet，并且提供了一个DispatcherServlet（前端控制器）。所有的请求都先经过DispatcherServlet，在它预处理后再分发给其它的Servlet。这样的好处就是自己创建和使用servlet会变得更加简单。从中也可以看出，SpringMVC其实主要是对Controller层的封装，对于Module和View没有太多的改进。
+Spring MVC的核心是`封装了Servlet`。它提供了一个DispatcherServlet，所有的请求都先经过DispatcherServlet，从而实现`简化前端参数接收和后端数据响应`。
+
+
+
+## Spring MVC 流程
+
+在使用Spring MVC框架后，流程也发生了改变。不再是浏览器直接访问程序员编写的servelt，而是访问Spring MVC的DispatcherServlet,整体流程如图：
+
+![Alt text](pic/SpringMVC-process.png)
+
+（橙色的是程序员需要自己实现的，其它部分是框架实现的）
+
+其中各个组件的责任：
+1. DispatcherServelt:负责所以请求接收和响应，根据请求路径找HandleMapping
+2. HandlerMapping:存储handler和请求路径的映射关系
+3. HandlerAdapter:根据handler方法的参数提取request请求中的内容，传递给Handler；将handler返回值封装到response中
+4. Handler:由程序员实现，调用需要的service层来进行事务处理
+5. ViewResolver：方便查找和渲染页面（非必须模块）
+
+各个组件之间的协助需要借助IOC容器，都放进IOC容器里后，spring自然可以按照流程进行处理。
+
 
 ## Quick Start
 
@@ -100,7 +120,7 @@ public class HelloController {
 
 ## @RestMapping 匹配用户请求
 
-@RestMapping用来匹配url到Servlet方法，其中Value参数必须设置，其它参数可选。
+@RestMapping用来在HandlerMapping中注册映射关系，其中Value参数必须设置，其它参数可选。
 
 ### Value 参数
 
@@ -210,10 +230,10 @@ public String servletRequest(HttpServletRequest httpServletRequest){
 其中HttpServletRequest是由DispatcherServlet来赋值的
 
 
-### SpringMVC 请求参数
+### SpringMVC 获取请求参数
 
-获取Request大多是为了获取其中的参数，对此SpringMVC进行了封装，将Request中的参数取出，直接传递给@Controller中的方法：
 
+**获取单个参数**
 ```
 @GetMapping("/directPara")
 public String directPara(@RequestParam("username") String username){
@@ -221,9 +241,16 @@ public String directPara(@RequestParam("username") String username){
     return username;
 }
 ```
-
-
 这里@RequestParam("username")匹配get请求中的username参数。值得注意的是：在之前的spring版本中，可以不设置@RequestParam注解，只要参数名和请求中的参数名一致就行，但是spring6好像不允许了。
+
+**获取同名参数列表**
+```
+@RequestMapping("/names")
+public String getNames(@RequestParam("name") List<String> names){
+    System.out.println(names);
+    return "success";
+}
+```
 
 **实体类封装参数**
 
@@ -242,6 +269,36 @@ public class User {
     private String username;
     private String password;
 }
+```
+
+### SpringMVC 获取请求体（JSON数据）
+
+json请求可以处理更复杂的数据类型，放在请求体中，获取方式为：
+```
+@RequestMapping("/json")
+public User getJson(@RequestBody User user){
+    System.out.println(user);
+    return user;
+}
+```
+
+其中使用USER实体类接收的，此外java本身是不能处理json类型的数据的，需要导入依赖
+
+```
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.16.1</version>
+</dependency>
+```
+
+并且在handlerAdapter中启用json处理类，由于spring已经将handlerAdapter的初始化封装了，我们只需要指出它的初始化方式即可：
+```
+// bean.xml中添加：
+<mvc:annotation-driven></mvc:annotation-driven>
+
+// 或者配置类上添加
+@EnableWebMvc
 ```
 
 ### SpringMVC 请求头
@@ -268,13 +325,21 @@ public String headerPara(@RequestHeader("host") String localhost){
 
 那现在的问题是，如何利用数据来构建View？其实如果做前后端分离就不用考虑了，直接返回数据给前端工程师就好，这也是流行的做法。不过下边还是讲一下一体式开发中如何构建view。
 
-## 向View传递数据
+## 共享数据
+![Alt text](pic/SpringMVC-DataShare.png)
 
-### 传统Request域
+在服务器端，servlet获取请求后可能跳转到其它servlet，也可能跳转到页面并展示，其中它们之间传递数据就是使用共享空间。共享空间有三种类型：
+
+1. Request:其作用域是一次request
+2. Session:作用域是一个session
+3. servletContext：作用域是整个项目
+
+
+### 获取传统Request域
 
 *注意：前文为了方便没有整合thymeleaf，而是用来@RestController注解。下边为了构建view，是添加了thymeleaf注解的，如何添加看笔记：Spring-Other.md*
 
-数据传递的思路是从controller跳转到html模板，通过共享的Request域来实现。
+数据传递的思路是通过共享的Request域来共享数据，然后从controller跳转到html模板。
 
 ```
 @RequestMapping("/t1")
@@ -286,7 +351,7 @@ public String t1(HttpServletRequest httpServletRequest,User user){
 }
 ```
 
-###  SpringMVC 共享Request数据
+###  SpringMVC 获取Request域
 
 **ModelAndView**
 
@@ -319,17 +384,23 @@ public String t2(Model model){
 
 ### 类似的还有Session和Application域对象，略过
 
-## 内部跳转和重定向
+## 响应数据
 
-在SpringMVC中内部跳转和重定向被认为是View，这样的话@Controller中方法的返回值都是View了，应该是为了贯彻MVC的思想吧。
+在SpringMVC中响应数据有两种情况：
 
-一般的方法会返回一个String类型的对象，这被认为是ViewName，被bean中的ThymeleafViewResolver处理为Thymeleaf View。而要进行跳转就需要返回InertnalResource View的View Name，而重定向就需要返回Redirect View 的Name。其特征如下：
+1. 通过视图解析器返回页面（通常是混合式开发）
+2. 不走视图解析器直接返回数据（通常是前后端分离开发）
+
+
+### 返回页面
+
+SpringMVC中的handler返回字符串会默认交给视图解析器来处理，其会根据字符串是否有前缀来进行不同处理：
 
 * 普通视图View Name：无前缀
 * Internal Resource：forward前缀
 * Redirect：redirect前缀
 
-### 内部跳转：InternalResource View
+**直接返回视图**
 
 ```
 @RequestMapping("/thymeleafView")
@@ -338,7 +409,11 @@ public ModelAndView thymeleaf(ModelAndView modelAndView){
     modelAndView.setViewName("success");
     return modelAndView;
 }
+```
 
+**内部跳转：InternalResource View**
+
+```
 @RequestMapping("/internal")
 public ModelAndView internal(ModelAndView modelAndView){
     modelAndView.addObject("username","internal user");
@@ -350,7 +425,7 @@ public ModelAndView internal(ModelAndView modelAndView){
 
 内部跳转直接的参数共享，View的参数传递都是由ModelAndView实现的
 
-### 重定向： Redirect View
+**重定向： Redirect View**
 
 ```
 @RequestMapping("/redirect")
@@ -365,7 +440,7 @@ public String redirectView(HttpServletRequest request){
 
 可以用servletContext传参，但是不好用，会很麻烦
 
-## 视图控制器 View Controller
+**补充：视图控制器**
 
 如果Controller中的方法比较简单，都是直接返回视图：
 ```
@@ -376,12 +451,55 @@ public String index(){
 ```
 其实可以在spring的xml配置文件中配置视图控制器：
 ```
+//但是有个弊端是，它会默认关闭注解功能
 <mvc:view-controller path="/index" view-name="index"></mvc:view-controller>
-```
-但是有个弊端是，它会默认关闭注解功能，也就是Controller中其它的映射都失效了，所以需要在配置文件中把spring的注解功能打开
-```
+
+//把spring的注解功能打开
 <mvc:annotation-driven></mvc:annotation-driven>
 ```
+
+### 返回JSON数据
+
+如果想要直接返回数据（现在都用JSON），也就是不走视图解析器，需要以下三步：
+
+1. 开启@ResponseBody注解
+2. 添加JSON依赖
+3. 将JSON添加到Handler中
+
+开启JSON在前边讲过 [开启json](#springmvc-获取请求体json数据)
+
+这样String或者实体类或者列表都会被转换为json数据返回
+```
+@RequestMapping("/json")
+@ResponseBody
+public List<User> returnJson(){
+    List<User> users = new ArrayList<>();
+    User cain = new User("cain", 12);
+    User gala = new User("gala", 22);
+    users.add(cain);
+    users.add(gala);
+    return users;
+}
+```
+
+### 返回静态资源
+
+当配置了DispatcherServlet后，所有的网络请求都会通过DispatcherServlet来处理。而DispatcherServlet每次都会去HandlerMapping中去查找Handler。这导致直接访问静态资源“localhost:8080/imgs/a.jpg”会无法访问，因为这个路径没有对应的handler。
+
+解决方式很简单，修改spring配置文件即可：
+```
+@Configuration
+@ComponentScan("controller")
+@EnableWebMvc
+public class DispatcherServletConfig implements WebMvcConfigurer {
+    // 开启静态资源
+    @Override
+    public void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) {
+        configurer.enable();
+    }
+}
+```
+底层会创建另一个servlet来允许处理静态资源
 
 ## HttpMessageConverter
 
@@ -440,6 +558,10 @@ public User res(){
 ```
 
 此外还有@RestController，它是@ResponseBody+@Controller
+
+## 拦截器
+
+TODO
 
 ## 用配置类代替xml文件
 
@@ -508,3 +630,5 @@ public class DispatcherServletConfig implements WebMvcConfigurer {
     }
 }
 ```
+
+具体内容可查看spring-other.md

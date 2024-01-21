@@ -81,7 +81,34 @@ classpath只是声明去哪里找包，还需要把要用到jar包下载到class
 
 ## 代理
 
-代理模式是常用的设计模式之一，其特征是代理类与被代理类有相同的接口，代理类可以为被代理类方法执行进行前置后置处理，增强被代理类方法
+代理模式是常用的设计模式之一，其目标是将核心代码和非核心代码进行分离。实现核心代码的类为目标类，基于核心类添加非核心代码的类为代理类。
+
+### 静态代理
+
+例如我们要实现一个计算器类，核心业务为计算功能，非核心业务为“在调用前打印一下”
+
+目标类
+```
+public class Calculator {
+    int add(int i,int j){return i+j;}
+}
+```
+
+代理类
+```
+public class CalculatorProxy {
+    Calculator calculator;
+
+    public CalculatorProxy(Calculator calculator){
+        this.calculator=calculator;
+    }
+
+    public int add(int i,int j){
+        System.out.println("proxy do some work");
+        return calculator.add(i,j);
+    }
+}
+```
 
 ### 动态代理
 
@@ -116,7 +143,7 @@ public class Calculator implements ICalculator{
 
     ClassLoader 和 interfaces 跟反射有关，不是很明白具体作用，大概是拿到接口类，知道接口有哪些，从而创建对应的实现类
 
-    InvocationHandler是重要的类，对目标类的增强就是在这里实现的
+    InvocationHandler是重要的类，对目标类的增强（非核心业务的实现）就是在这里实现的
 
     大概流程为：
 
