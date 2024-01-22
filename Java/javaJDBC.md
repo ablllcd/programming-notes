@@ -195,6 +195,8 @@ while (resultSet.next()){
 
 而数据库连接池就是一个connection容器，它管理多个connection对象。用户需要用就从连接池拿，不用就放回去，从而节省了创建和释放的开销。（当然，连接池本身的实现更复杂）
 
+由于连接池负责数据库的连接和释放，所以它需要用到JDBCDriverManager，也算是稍微封装了JDBC？
+
 ### Quick Start
 
 1. 添加依赖
@@ -246,7 +248,7 @@ public static void main(String[] args) throws Exception {
 
 ## Spring Framwork 中的 JDBCTemplate 封装
 
-Spring框架提供了JDBCTemplate类来封装使用数据库连接池操作数据库的操作。
+Spring框架提供了JDBCTemplate类来封装使用数据库连接池操作数据库的操作。（我的理解是它封装了JDBC,和Mybatis一样都是框架）
 
 ### 1. 引入依赖
 ```

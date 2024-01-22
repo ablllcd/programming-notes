@@ -251,64 +251,7 @@ IOC容器中创建和管理的对象，称为Bean。
 ### 配置文件类型
 Spring Boot 支持property和yml两种类型的配置文件，它们俩语法不同，但是作用是完全相同的。
 
-### 参数配置化
-项目中有很多代码需要配置参数，例如连接数据库，连接云端服务器等，与其将代码分散配置，不如放在配置文件中统一管理。
 
-#### property
-在property文件中，可以定义变量并赋值
-````
-myTest.v1 = hello
-myTest.v2 = cain
-````
-
-#### @Value
-@Value只能修饰成员变量，框架在启动时会查找application.property中同名变量并为被@Value修饰的类创建实例并且作为bean。
-````
-public someclass{
-    @Value("${myTest.v1}")
-    private String v1;
-
-    @Value("${myTest.v2}")
-    private String v2;
-}
-````
-
-#### @ConfigurationProperties
-@Value在修饰很多值的时候会显得臃肿，@ConfigurationProperties可以修饰整个类，而不是单个成员变量。
-
-创建一个配置类，该类必须有get/set方法以及需要成为bean，所有有@Data和@Component。（一般来说，该配置类会在utils包下）
-
-@ConfigurationProperties(prefix = "")会在property文件中查找prefix为特定值的变量，并根据变量名来匹配类中的成员变量。
-
-````
-@Data
-@Component
-@ConfigurationProperties(prefix = "ali.yun")
-public class AliYunConfigure {
-    private String endpoint;
-    private String accessKeyId;
-    private String bucketName;
-}
-````
-application.property
-````
-ali.yun.endpoint = "endpoint1"
-ali.yun.access-key-id= "123456"
-ali.yun.bucket-name="bucket1"
-````
-
-在使用时需要创建bean对象：
-````
-@Autowired
-private AliYunConfigure aliYunConfigure;
-
-@RequestMapping("/test")
-public void test() {
-    System.out.println(aliYunConfigure.getEndpoint());
-    System.out.println(aliYunConfigure.getAccessKeyId());
-    System.out.println(aliYunConfigure.getBucketName());
-}
-````
 
 ### 工具包
 有个工具包可以智能识别被标注的变量，从而在写property时，能够自动补全变量名。
