@@ -108,10 +108,6 @@ auto increment： 这可以更改自增长的初始值，但是好像无法将�
     INSERT INTO table_name (column1,column2,column3,...)
     VALUES (value1,value2,value3,...);
 
-### Select
-    // 有的时候我们可能希望使用*和特定列来完成查询
-    Select A.*, B.name FROM A,B WHERE A.id=B.id; 
-
 ### Delete
 
     DELETE FROM table_name
@@ -123,6 +119,10 @@ auto increment： 这可以更改自增长的初始值，但是好像无法将�
     SET column1 = value1, column2 = value2, ...
     WHERE condition;
 
+### Select
+    // 有的时候我们可能希望使用*和特定列来完成查询
+    Select A.*, B.name FROM A,B WHERE A.id=B.id; 
+
 ### Limit
 Limit 可以对查询到的结果进一步筛选，startPostion是开始位置，length是从开始位置读取多少条记录，通常用来分页查询。
 
@@ -131,6 +131,42 @@ Limit 可以对查询到的结果进一步筛选，startPostion是开始位置�
     Where condition
     Limit startPosition, length
 
+### Join
+
+Join可以分为多种类型：
+* Join：没指定类型就等同于Cross Join
+* Cross Join：效果为卡笛尔积
+* Natural Join: 就是Natural Join(效果等同于inner join)
+* Left Join: Natural Join的结果+左表的其它列，缺失值写NULL
+* Right Join：Natural Join的结果+右表的其它列，缺失值写NULL
+* Full Join: Left Join的结果 Union Right Join的结果。（注意：mysql中虽然有full join但其效果等同于join，所以要实现真正的full join效果需要自己union。）
+
+*注意：虽然有inner和full join关键字，但其实没效果的*
+
+Join配合的关键字：
+* on：需要指明连接条件，有重复的列（在Full join时必须用这种，因为需要重复的列！）
+
+    ```
+    select * from employee join dept_emp on employee.uid=dept_emp.uid
+    ```
+* using:指明需要连接的列，没有重复的列
+
+    ```
+    select * from employee left join dept_emp using (uid)
+    ```
+
+### Aggregate
+
+聚合通常涉及三个操作：group by；avg；having
+
+having和where的区别在于：having是在分组后起效，where是分组前
+
+```
+select branch-name, avg (balance)
+from account
+group by branch-name
+having avg (balance) > 1200
+```
 
 ## Global Variable
 
