@@ -1,3 +1,13 @@
+## 进程和线程
+
+推荐视频：https://www.youtube.com/watch?v=e3JQOgKw9BA
+
+进程是资源分配的最小单位，线程是CPU调度的最小单位
+
+在java中，Thread指的是线程，一个JVM才是一个进程：
+* 进程中有堆，栈，方法区等
+* 线程有自己的栈，但是它们是共享堆和方法区的
+
 ## 线程创建
 
 ### 继承Thread类
@@ -258,8 +268,42 @@ public class Account {
     } 
 }
 ````
-
 注意：程序有可能出现异常，而为了保证锁能够被释放，常常把被加锁的代码放到try-catch中，然后将释放锁的代码放入finally中。
+
+## Volatile
+
+Volatiel关键字是为了保证变量`可见性`：
+
+> 一个线程修改了共享变量值，而另一个线程却看不到
+
+示例代码：
+
+```
+public class TestVolatile {
+    private static volatile boolean stop = false;
+
+    public static void main(String[] args) {
+        // Thread-A
+        new Thread("Thread A") {
+            @Override
+            public void run() {
+                while (!stop) {
+                }
+                System.out.println(Thread.currentThread() + " stopped");
+            }
+        }.start();
+
+        // Thread-main
+        try {
+            Thread.sleep(1000);
+            System.out.println(Thread.currentThread() + " after 1 seconds");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        stop = true;
+    }
+}
+```
 
 ## 线程通信
 在某些场景下，我们可能不希望简单的竞争条件，而是线程相互协调，这就需要进行线程通信。

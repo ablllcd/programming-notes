@@ -258,7 +258,7 @@ xml文件中的bean有scope属性，其有两个值：singleton和prototype
 
 singleton是默认值，表示该类为单实例，在IOC容器初始化时就创建实例
 
-prototype表示多实例，在获取bean时才创建实例
+prototype表示多实例，在获取bean时才创建实例（每次调用都会创建一个新的实例）
 
 ```
 <bean id="user" class="com.example.pojo.User" scope="prototype">
@@ -636,6 +636,29 @@ public class TestAspect {
 1. 自定义注解
 2. 对目标方法添加自定义注解
 3. 在AOP类的方法上，添加@Annotation(自定义注解的全类名)作为切入点表达式。
+
+### AOP原理
+
+Spring的AOP实现原理其实很简单，就是通过动态代理实现的。如果我们为Spring的某个bean配置了切面，那么Spring在创建这个bean的时候，实际上创建的是这个bean的一个`代理对象`，我们后续对bean中方法的调用，实际上调用的是代理类重写的代理方法。**（注意：只有用AOP的时候IOC容器里存储的才是代理对象，如果没有Aspect类，则存储的是原本的类）**
+
+不过代理对象的生成方式有两种：JDK代理对象和CGLIB代理对象。Spring会根据不同的情况使用不同的代理方法。例如JDK动态代理是通过目标对象继承的接口来创建代理类的，如果没有bean接口就无法用该方法，只能转CGLIB。
+
+以下是一个测试代理的方式：
+```
+public void testProxy() {
+    ApplicationContext context =
+        new AnnotationConfigApplicationContext(AOPConfig.class);
+	// 注意，这里只能通过Human.class获取，而无法通过Student.class
+    // 因为在Spirng容器中使用JDK动态代理，Ioc容器中，存储的是一个类型为Human的代理对象
+    Human human =  context.getBean(Human.class);
+    human.display();
+    // 输出代理类的父类，以此判断是JDK还是CGLib
+    // 如果输出是Proxy说明是JDK（因为JDK方式的代理类是Proxy的子类）
+    System.out.println(human.getClass().getSuperclass());
+}
+```
+
+上述代码判断代理方法的方式很简单，查看代理对象的父类就行，因为JDK中代理类继承的是Proxy方法，而CGLIB中继承的目标类。
 
 
 ### 基于XML的AOP
