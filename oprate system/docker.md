@@ -55,8 +55,11 @@ docker cp YOUR_PATH_TO_FOLDER/DBLP-Lab2.tar.gz [containnerName]:/
 // 运行容器的shell
 docker exec -it mycassandra /bin/sh
 
-// 创建虚拟网络，允许container相互交流
+// 虚拟网络，允许container相互交流
 docker network create [NetName]
+docker network ls   //查看当前网络
+docker network connect <Net> <contianer>  //添加到网络
+
 ````
 
 

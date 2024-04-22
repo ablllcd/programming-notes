@@ -211,7 +211,7 @@ public List<Employee> getAllUsers();
 
 **多参数传递**
 
-接口中方法的参数被mybatis存储在mapper中，**默认键值对**为arg0,arg1,param1,param2。
+接口中方法的参数被mybatis存储在map中，**默认键值对**为arg0,arg1,param1,param2。
 
 ```
 public Employee getByNameAndAge(String name,int age);
@@ -223,7 +223,7 @@ public Employee getByNameAndAge(String name,int age);
 </select>
 ```
 
-此外也可以构建**mapper**，传递mapper：
+此外也可以构建**map**，传递map：
 ```
 public Employee getByNameAndAge(Map map);
 ```
@@ -353,12 +353,12 @@ public Map<String,Object> getAllUsers();
 
     在映射文件中使用resultMap标签，先从select映射到resultMap，在映射到实体类。（resultType流程好像是一致的，只是使用了默认的resultMap）
     ```
-    <resultMap id="empResultMap" type="org.example.pojo.Employee">
+    <resMapultMap id="empResultMap" type="org.example.pojo.Employee">
         <id property="id" column="uid"/>
         <result property="name" column="name"/>
     </resultMap>
 
-    <select id="getAllUsers" resultType="map">
+    <select id="getAllUsers" resultMap="empResultMap">
         select * from employee
     </select>
     ```
@@ -513,3 +513,196 @@ sqlSession.commit();
 ```
 sqlSession = sqlSessionFactory.openSession(true);
 ```
+
+# Spring Boot 配置Mybatis
+
+## Quick Start
+1. 创建SpringBoot项目并添加依赖
+
+    ```
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>org.mybatis.spring.boot</groupId>
+        <artifactId>mybatis-spring-boot-starter</artifactId>
+        <version>2.3.2</version>
+    </dependency>
+    <dependency>
+        <groupId>com.mysql</groupId>
+        <artifactId>mysql-connector-j</artifactId>
+        <version>8.2.0</version>
+    </dependency>
+    ```
+
+    这里有两个需要注意的：（1）要选择对应jdk版本的springboot版本 （2）mybatis没有被springboot管理版本，使用时要注意springboot和mybatis版本是否一致
+
+2. 在application.properties中填写数据库配置信息：
+    ```
+    spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+    spring.datasource.url=jdbc:mysql://localhost:3306/db01
+    spring.datasource.username=root
+    spring.datasource.password=123456
+    ```
+
+3. 创建实体类来接收SQL查询结果
+
+    ```
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public class User implements UserDetails {
+        private Integer id;
+        private String firstname;
+        private String lastname;
+        private String password;
+    }
+    ```
+
+4. 创建Mapper接口
+    ```
+    @Mapper
+    public interface UserMapper {
+        @Select("select * from user")
+        public List<User> list();
+    }
+    ```
+5. 在applicaiton类上添加注解开启组件扫描
+    ```
+    @SpringBootApplication
+    @MapperScan("com.cain.mapper")
+    public class SecurityApplication {
+        public static void main(String[] args) {
+            SpringApplication.run(SecurityApplication.class,args);
+        }
+    }
+    ```
+
+## 基本操作
+
+### Mapper注解
+
+被@Mapper注解标记的接口会被自动实现
+
+todo:为什么
+
+### 增加
+````
+@Insert("insert into user( name, gender) values " +
+        "( #{name}, #{gender})")
+public int insert(User user);
+````
+如果sql语句错误，例如主键重复，程序也会报错。
+
+#{name}和#{gender}是User的成员变量，可以直接写，不需要get方法。
+
+如果有返回值，就是数据库被影响的条数。
+
+### 增加-主键返回
+有时在插入后，我们需要返回主键，则需要添加注释@potions
+````
+@Options(keyProperty = "id", useGeneratedKeys = true)
+@Insert("insert into user( name, gender) values " +
+        "( #{name}, #{gender})")
+public int insert(User user);
+````
+
+````
+@Test
+public void insertTest(){
+    User u = new User(1, "user", "g");
+    int num = userMapper.insert(u);
+    System.out.println("id is "+u.getId());
+}
+````
+这样新增条目的主键会被赋值到User的id变量中。
+
+### 删除
+````
+@Delete("delete from user where id=#{id}")
+public void delete(int id);
+````
+
+### 修改
+````
+@Update("update user set name = #{newname} where name = 'newname'")
+public void update(String newName);
+````
+
+### 查找
+````
+@Select("select * from user")
+public List<User> list();
+````
+User的成员变量需要和查询到的数据列数和名称一一对应，User也需要设置get/set方法。这样查询到的数据会自动封装为User，并且封装到List中。
+
+
+## 数据库预编译和拼接
+### 预编译
+预编译的语句是 #{变量}
+
+    @Mapper
+    public interface EmpMapper {
+       @Delete("delete from employee where uid=#{id}")
+       public int delete(Integer id);
+    }
+
+输出的日志为
+````
+==>  Preparing: delete from employee where uid=?
+==> Parameters: 1(Integer)
+<==    Updates: 0
+````
+
+其优势为：`性能高`，没有`sql注入问题`
+
+### 拼接
+直接进行变量和sql语句的字符串拼接：${变量}
+````
+@Mapper
+public interface EmpMapper {
+    @Delete("delete from employee where uid=${id}")
+    public int delete(Integer id);
+}
+````
+输出日志为
+````
+==> Preparing: delete from employee where uid=1
+==> Parameters: 
+<== Updates: 0
+````
+有`sql注入问题`，使用场景不多。
+
+上述两个操作的返回值是：该sql操作影响的数据数目。
+
+
+### XML 文件
+除了直接用标注外，还可以使用XML配置sql语句。具体请看：https://www.bilibili.com/video/BV1m84y1w7Tb?p=130
+
+### 动态sql
+对于sql语句，除了用参数替换值外，还可以通过if，for，等标签来动态构造，具体怎么做等用到在查。
+
+## 数据库连接池
+执行sql语句前，程序需要先和数据库建立连接。在框架中这步骤被隐藏了，但是在jdbc中可以看到详细的过程。为了优化数据库连接的创建和释放，提出了数据库连接池的概念。
+
+1. 数据库连接池是一个容器，负责分配和管理`连接(conncection)`。
+2. 它允许程序重复使用现有的连接，而不是每次使用都要创建和释放。
+3. 如果用户占有连接但没有使用，超过一定时间，连接池会自动将其收回。
+
+连接池接口：DataSource
+
+连接池产品：C2P0，DBCP等，springboot默认的是Hikari。
+
+指定连接池：在pom中添加连接池的dependency，即自动切换为该连接池。例如：
+````
+<!-- 数据库连接池 -->
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid-spring-boot-starter</artifactId>
+    <version>1.2.20</version>
+</dependency>
+````
+会将连接池切换为阿里的Druid。

@@ -68,7 +68,7 @@ public class Main {
 * @ComponentScan：开启组件扫描（默认范围是当前类所在的包及其子包）
 
 ## 统一配置管理
-根据spring-boot-starter-parent父工程的要求，配置文件是需要统一写在application.propeties/ymal文件中的：
+根据spring-boot-starter-parent父工程的要求，配置文件是需要统一写在application.propeties/yml文件中的：
 
 ```
 // spring-boot-starter-parent的POM文件

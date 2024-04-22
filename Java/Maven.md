@@ -88,7 +88,25 @@ Scope的依赖范围有：
    
    （类似于provided，但此时不是由服务器提供，而是由本地system提供，需要systemPath指明路径，可移植性差）
 
-6. **import**:与dependencyManagement元素配合
+6. **import**:与dependencyManagement元素配合，只用dependencyManagement中的denpendency才能用import范围。它会把指定的dependency复制过来，而不是继承或者依赖传递。
+
+### 依赖类型
+
+其实每个dependency都有type属性，只是默认值“jar包”一般不会修改，所有经常不用声明，但实际上type是有多种值的。
+
+1. **pom**
+
+    当所需要的服务提供了多个jar包来实现的时候，提供者可能会把这句jar包组合成pom包，这时的类型就为pom，例如：
+    ```
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>2.5.7</version>
+        <scope>import</scope>
+        <type>pom</type>
+    </dependency>
+    ```
+
 
 ### 依赖传递
 

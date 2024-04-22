@@ -63,6 +63,20 @@ public UserWithOrderResp getEmployeeByID(@PathVariable Integer id){
 
 注意：正常情况下restTemplate发送URL请求只需要调用getForObject即可，但由于上例的请求会返回一个json数组，无法通过类名直接反序列化，所以代码显得繁琐。
 
+## REST Template
+RestTemplate是Spring提供的用于访问Rest服务的客户端，它封装了HTTP请求类，并提供了多种便捷访问远程Http服务的方法,能够大大提高客户端的编写效率。
+
+RestTemplate 采用同步方式执行 HTTP 请求的类，底层使用 JDK 原生 HttpURLConnection API ，或者 HttpComponents等其他 HTTP 客户端请求类库。
+
+1. 获取响应
+```
+RestTemplate restTemplate = new RestTemplate();
+
+String url = "http://localhost:888/product1";
+ResponseEntity<Product> result = restTemplate.getForEntity(url, Product.class);
+System.out.println(result);
+```
+
 ## Spring Cloud
 
 Spring Cloud是一套解决方案，旨在解决微服务项目中会遇到的问题。Spring Cloud包含了很多项目，而Spring Cloud本身可以看作是一套规范。例如服务注册，网关等等，每个项目都是由不同公司研发的，但是要遵循Spring Cloud提供的规范才行。
@@ -82,9 +96,15 @@ Eureka是一个注册中心的实例，下图是其工作流程
 
 ### 创建eureka server
 
-1. 创建spring 项目并且添加 eureka server 依赖
-
-![Alt text](pic/Eureka-spring-dependency.png)
+1. 创建新的模块并且添加依赖 (父类应该已经引用了spring boot 和 spring cloud)
+```
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+    </dependency>
+</dependencies>
+```
 
 2. 在启动类添加@EnableEurekaServer
 
@@ -100,16 +120,24 @@ public class EurekaServerApplication {
 }
 ```
 
-3. 设置application.properties
+3. 设置application.yml
 
 ```
-server.port = 9090
+spring:
+  application:
+    name: eureka-server
+server:
+  port: 8091
 
-spring.application.name = eurekaServer
-eureka.client.service-url.defaultZone = http://127.0.0.1:${server.port}/eureka/
+eureka:
+  client:
+    # server不需要获取注册表
+    fetch-registry: false
+    # server不需要注册自己
+    register-with-eureka: false
 ```
 
-4. 在浏览器输入http://127.0.0.1:9090可以看到注册中心的页面。（注意：URL中没有/eureka/后缀）
+4. 在浏览器输入http://127.0.0.1:8091可以看到注册中心的页面。（注意：URL中没有/eureka/后缀）
 
 
 ### 将服务注册到注册中心
@@ -120,11 +148,10 @@ eureka.client.service-url.defaultZone = http://127.0.0.1:${server.port}/eureka/
 <dependency>
     <groupId>org.springframework.cloud</groupId>
     <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-    <version>4.1.0</version>
 </dependency>
 ```
 
-注意： 版本可能需要根据spring boot 项目的版本进行修改
+注意： 父项目spring cloud和spring boot的版本要匹配，这个可以在[spirng cloud官网](https://spring.io/projects/spring-cloud)查看。 此外，主要依赖不是spring-cloud-netflix-eureka-client！要有start词缀
 
 2. 修改application.properties
 
@@ -132,8 +159,25 @@ eureka.client.service-url.defaultZone = http://127.0.0.1:${server.port}/eureka/
 // 指明自己服务的名称
 spring.application.name = employee-client
 // 指明要将服务注册到哪个注册中心
-eureka.client.service-url.defaultZone = http://127.0.0.1:9090/eureka/
+eureka.client.service-url.defaultZone = http://127.0.0.1:8091/eureka/
 ```
+
+3. 启动类上添加注解
+```
+@SpringBootApplication
+@EnableEurekaClient
+public class CustomerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(CustomerApplication.class,args);
+    }
+
+    @Bean
+    public RestTemplate restTemplate(){
+        return new RestTemplate();
+    }
+}
+```
+
 
 ### 注册发现
 
@@ -619,7 +663,7 @@ void sendMessage2TopicExchange() {
 2. 创建容器
 
 ```
-docker run -d --name es -e "discovery.type=single-node" --privileged --network Mynet -p 9200:9200 -p 9300:9300 elasticsearch:7.12.1
+docker run -d --name es -e "discovery.type=single-node" --privileged --network Mynet -p 9200:9200 -p 9300:9300 -v /esMapData:/data elasticsearch:7.12.1
 ```
 
 3. 打开localhost:9200测试
