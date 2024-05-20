@@ -51,6 +51,9 @@ git help command
 git init    // 将当前目录创建为仓库
 git clone url   // 下载远程的仓库
 ````
+
+也可以不进行init，直接通过git clone来获取远程仓库。
+
 #### 查看仓库
 ````
 git status  //查看状态
@@ -91,13 +94,24 @@ git rm file1.txt // 工作区和暂存区中删除文件
 git commit //通知本地仓库删除文件
 ````
 
+#### 清除untracked文件
+````
+// 对于untracked，可以用git clean移除
+git clean   
+
+// 参数
+git clean -f //强制删除文件
+git clean -df //强制删除文件夹
+git clean -n //查看要被删除的文件
+git clean -dff  //强制删除被其它git管理的文件夹
+````
 
 #### 忽略文件
 创建.gitignore，在文件中声明要忽略的文件，可以使用正则表达式。
 
 ## 版本控制
 ````
-// git log 可以查看版本号
+git log     //查看提交记录的版本号
 git reset versionNumber
 ````
 
@@ -109,10 +123,27 @@ git rest --mixed：这个是默认参数，删除缓存区的内容但保留工�
 
 git rest --hard：这个会删除工作区和暂存区的内容，它旨在真的将文件回退到某个版本。
 
-
 ![Alt text](pic/gitReset.png)
 
 但要注意的是，就是是使用了--hard参数，也是有办法撤回的，可以使用 git --reflog命令查看被删除的版本好，然后reset到那个版本。
+
+### 撤销未提交的修改
+
+有时候我们对项目进行了修改，但是越改越乱，不想提交而是想回退到最近一次提交。思路如下：
+
+1. 还原staged files
+
+    ```
+    git reset --hard [version]
+    ```
+
+2. 移除unstaged files
+
+    ```
+    git clean -df
+    ```
+
+3. 手动删除.gitignore的文件
 
 ## 比较差异
 我们可以使用 git diff 命令来比较不同版本之间的差异。
