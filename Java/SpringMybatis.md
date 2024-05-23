@@ -419,7 +419,7 @@ public Map<String,Object> getAllUsers();
     ```
     resultMap对于查询到的每一行，除了根据名称赋值外，还将dept_id作为参数调用org.example.mapper.DeptMapper.getDeptByID方法，其返回的Dept类型直接赋值给employee的dept。
 
-    分布查询的主要用途为`延迟加载`，例如开启延迟加载后，调用getAllEmps获取的Emp列表并没有Dept对象，只有真的用到的时候才会执行association里的sql语句（也就是分布查询才允许延迟加载这种优化）。
+    分步查询的主要用途为`延迟加载`，例如开启延迟加载后，调用getAllEmps获取的Emp列表并没有Dept对象，只有真的用到的时候才会执行association里的sql语句（也就是分布查询才允许延迟加载这种优化）。
 
     ```
     <association property="department"

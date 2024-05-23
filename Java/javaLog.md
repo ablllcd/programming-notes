@@ -50,36 +50,47 @@ public class HelloWorld2 {
     }
 }
 ```
-这里没有配置logback的xml文件，但是依旧可以使用，因为没有配置文件也会进行默认配置。
+基本操作为：1. 通过类名获取Logger（指明哪个类在产生日志） 2. 利用logger输出日志，输出可以有不同的level。
+
+如果需要，还可以输出Logback框架当前的状态信息，例如在使用哪个配置文件等。
 
 ## logback的架构
 
 logback主要由3部分构成：
-* logger: 日志消息对象。通过logger对象可以将日志空间划分为树状结构，从而可以只输出需要的日志。
-* Appender: 日志消息的输出对象，一个logger可以绑定多个logger，从而输出到多个地点。
-* Layout: TBD
+* logger: 生产日志消息的对象。通常不同类会根据自己的类名来获得不同的logger。这样可以将日志空间进行划分，从而能够禁止某些日志的输出，但是又不会妨碍另一些日志的输出。
+* Appender: 日志消息输出的目的地
+* Layout: 日志消息的输出格式
 
-### logger 树状结构
+### logger 
 
-logger的树状结构是根据logger名称划分的，根节点为root。其它节点的继承关系由 . 来区分。例如com.example是com的子类。
+**logger 创建和获取**
 
-### logger 创建和获取
+通过LoggerFactory.getLogger(loggerName)获取logger，如果logger不存在，则创建logger。
 
-在上述代码中，都是通过LoggerFactory.getLogger(loggerName)获取logger，如果logger不存在，则创建logger。
+```
+Logger logger = LoggerFactory.getLogger("chapters.introduction.HelloWorld2");
+```
 
-此外，也可以在logback配置文件中创建logger，并且设置logger的属性。
+Logger创建在logback配置文件中完成。
 ```
 <logger name="com" level="INFO">
     <appender-ref ref="STDOUT"/>
 </logger>
 ```
-为了降低耦合，感觉在配置文件中创建logger更好。官方建议logger的名称为使用该logger类的全类名。
 
-### logger level
+logger还有点IOC的感觉：
+1. 在不同地方通过相同名称获取的logger为同一对象，对该对象的修改也是共享的（单例模式）
+2. 父级 logger 会自动寻找并关联子级 logger，即使父级 logger 在子级 logger 之后实例化
 
-logger可以指定输出的level，其中TRACE < DEBUG < INFO < WARN < ERROR。
+**树状结构**
 
-logger level也是有继承关系的，如果com.aa没有指明level，那它将继承其父类com的level。其中root默认的level为debug。
+通常logger的名称对应java中的包名+类名，所以logger划分的日志空间也有树状结构。其中根节点为root。其它节点的继承关系由 . 来区分。例如com.example是com的子类。
+
+**输出level**
+
+logger可以指定输出的level，如果日志的level低于logger的输出level，则该日志不被输出。其中TRACE < DEBUG < INFO < WARN < ERROR。
+
+logger的输出level也会收到树状结构的影响，例如：com.aa没有指明level，那它将继承其父类com的level。如果com.aa指明了level，则无需考虑父类的level。其中root默认的level为debug。
 
 ```
 public void layerTest(){
@@ -98,13 +109,15 @@ public void layerTest(){
 }
 ```
 
-### Logger Additifity
+### Appender
 
-上边logger继承关系的也会导致日志消息的传递：子类的消息会传递给父类；父类的消息会传递给root。
+logback 允许日志在多个地方进行输出，输出目的地叫做 appender。 而且一个 logger 可以有多个 appender。
 
-如果每个层级的logger都设置了appender来打印消息，这种叠加性（additifity）会导致日志消息多次打印。
+**添加appender**
 
-为此我们可以设置additivity属性来显示指明是否开启叠加性（默认开启）：
+logger 通过 addAppender 方法来新增一个 appender。每一个允许输出的日志都会被转发到该 logger 的所有 appender 中去。
+
+但是树状结构也会影响logger绑定的appender: 子类的消息除了给自身的appender，还会传递给父类的appender。为此我们可以设置additivity属性来选择是否传递消息给父类（默认开启）：
 
 ```
 <logger name="com" level="INFO">
@@ -118,6 +131,15 @@ public void layerTest(){
 <root level="debug">
     <appender-ref ref="STDOUT"/>
 </root>
+```
+
+### Layout
+
+layout 的作用是将日志格式化。PatternLayout 能够根据用户指定的格式来格式化日志，类似于 C 语言的 printf 函数。
+
+例：PatternLayout 通过格式化串 "%-4relative [%thread] %-5level %logger{32} - %msg%n" 会将日志格式化成如下结果：
+```
+176  [main] DEBUG manual.architecture.HelloWorld2 - Hello world.
 ```
 
 ## 配置文件
