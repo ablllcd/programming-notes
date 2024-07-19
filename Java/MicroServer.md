@@ -364,6 +364,8 @@ spring.cloud.gateway.routes[0].uri=lb://employee-client
 spring.cloud.gateway.routes[0].predicates[0]=Path=/emp/**
 ```
 
+3. 创建启动类
+
 结果就是：访问gateway（也就是10000端口）时，会根据路由规则（predicates）进行重定位。
 
 ### 断言/过滤 工厂
@@ -378,6 +380,14 @@ spring.cloud.gateway.routes[0].predicates[0]=Path=/emp/**
 ```
 spring.cloud.gateway.routes[0].filters[0]=AddRequestHeader=TestHead, This is a test head
 ```
+
+### 登录校验
+
+![alt text](pic/gateway-1.png)
+
+网关在进行路由之前，还经常用来做登录校验。这是通过网关内部的filter chain实现的。我们通过添加自己的filter到filter chain中即可实现登录校验功能。
+
+Spring Cloud GateWay提供了两个filter接口： GatewayFilter 和 GlobalFilter。 其中GatewayFilter默认不添加到任何路由下，需要手动指定添加；GlobalFilter默认添加到所有的路由下。 只要我们实现接口，Spring就会将我们的filter构建为bean并且自动添加到filter chain中。filter chain中的执行顺序通过@Order注解来声明。
 
 ### Global Filter
 除了使用过滤工厂，也可以自定义类来创建过滤操作，该类需要实现GlobalFilter接口

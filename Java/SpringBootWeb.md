@@ -22,29 +22,6 @@
 
 *Note:创建SpringBoot工程是联网下载的* 
 
-## Web服务器
-想要别人能够通过网络访问到自己的资源，需要所谓的web服务器来负责处理协议以及实现部署。
-
-而在框架中，我们不是将资源交给服务器，单纯依赖服务器来实现所有功能，而是需要和服务器进行交互来实现一些业务逻辑。为此我们希望框架中的web服务器可以：
-
-1. 封装HTTP协议，便于web开发
-2. 部署web项目，使其能够通过浏览器访问
-
-在上述springBoot的web依赖中已经包含了`Tomcat` Web服务器了。
-
-### Tomcat服务器
-Tomcat支持Servlet规范（java servlet感觉是java用于web的类，之后需深入了解），可以运行Servlet程序，因此也被成为Servlet容器。
-
-## Tomcat 在Spring boot中的应用
-![Alt text](pic/Springboot-Tomcat.png)
-
-首先，Springboot底层提供了DispatcherServlet类，这个类实现了Servlet接口，也就符合Servlet规范。所以它可以被Tomcat识别，也可以用它来使用Tomcat。
-
-浏览器的请求由Tomcat接收，然后它将其封装为Servlet，Servlet再被处理为Controller。响应也是同理，先在Controller中指明要返回的值，然后（我猜是springboot）将Controller转为Servlet，Tomcat将Servlet发送给客户端。<br>
-（浏览器的请求和响应分别被Tomcat封装为HttpServletRequest和HttpServletResponse类，这个要等学了Servlet才能搞懂，暂且不管）
-
-我们通过写Controller类便可以实现浏览器的请求和响应。
-
 ## 请求响应操作
 就如同quickstart中那样，创建请求处理类即可。所谓的请求处理类就是加了`@RestController`的类，类中用`@RequestMapping(/path)`注解来实现对应URL的请求处理方法。
 

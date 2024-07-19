@@ -4,7 +4,7 @@
 
 而在java中，Module层通常使用实体类来存储数据，用Service类来处理数据操作；View层通常是用html或者jsp文件来实现；而Controller层则是用Servlet技术来实现。
 
-整体流程为：用户和html页面交互->发送请求到Servlet->Servlet调用Service类来获取数据或者处理逻辑->Servlet根据Service的结果返回页面或者重定向
+**整体流程**为：用户和html页面交互->发送请求到web服务器软件(tomcat)->web服务器软件调用URL对应的servlet->Servlet调用Service类来获取数据或者处理逻辑->Servlet根据Service的结果返回页面或者重定向。 (其中tomcat和servlet详情可见javaServlet.md)
 
 ## Spring MVC 概述
 
@@ -13,10 +13,16 @@ Spring MVC是Spring中的一个框架，它可以和Spring的其它框架衔接�
 Spring MVC的核心是`封装了Servlet`。它提供了一个DispatcherServlet，所有的请求都先经过DispatcherServlet，从而实现`简化前端参数接收和后端数据响应`。
 
 
+### Spring MVC在Tomcat中的作用
+![Alt text](pic/Springboot-Tomcat.png)
+
+SpringMVC提供了DispatcherServlet类，这个类实现了Servlet接口，也就符合Servlet规范。所以它可以被Tomcat识别，也可以用它来和Tomcat交互。
+
+所以Tomcat只需要将所有的请求封装为ServletRequest丢给DispatcherServlet就行，DispatcherServlet会调用controller等spring自己的逻辑，最后根据规范返回ServletResponse即可。
 
 ## Spring MVC 流程
 
-在使用Spring MVC框架后，流程也发生了改变。不再是浏览器直接访问程序员编写的servelt，而是访问Spring MVC的DispatcherServlet,整体流程如图：
+在使用Spring MVC框架后，程序员不需要写servlet来和服务器软件交互，而是由Spring MVC的DispatcherServlet来交互。程序员则需要根据spring的规范来和DispatcherServlet交互,整体流程如图：
 
 ![Alt text](pic/SpringMVC-process.png)
 
@@ -212,6 +218,25 @@ public String paraTest(@PathVariable("username") String username){
     return (String) username;
 }
 ```
+
+### 文件数据
+上传文件要求前端三要素：input type = file; method=post; enctype="multipart/form-data"。
+````
+<form action="/upload" method="post" enctype="multipart/form-data">
+    name: <input type="text" name="username"> <br>
+    file: <input type="file" name="file"><br>
+    <input type="submit" value="submit">
+</form>
+````
+
+文件类型储存到MultipartFile类型中，注意变量名和input name要相同
+````
+@PostMapping("/upload")
+public void upload(MultipartFile file) {
+    System.out.println(file.getOriginalFilename());
+}
+````
+MultipartFile封装了一些方法，有获取文件名，获取文件内容，存储文件等功能
 
 ## 处理Request请求
 

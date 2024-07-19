@@ -260,6 +260,11 @@ singleton是默认值，表示该类为单实例，在IOC容器初始化时就�
 
 prototype表示多实例，在获取bean时才创建实例（每次调用都会创建一个新的实例）
 
+之所以用单例，是因为没必要每个请求都新建一个对象，这样子既浪费CPU又浪费内存；
+
+之所以用多例，是为了防止并发问题；即一个请求改变了对象的状态，此时对象又处理另一个请求，而之前请求对对象状态的改变导致了对象对另一个请求做了错误的处理；
+
+
 ```
 <bean id="user" class="com.example.pojo.User" scope="prototype">
     <constructor-arg name="name" value="cain"></constructor-arg>

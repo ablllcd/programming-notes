@@ -1,18 +1,31 @@
-## Tomcat
+## Web服务器
+想要别人能够通过网络访问到自己的资源和程序，需要下载`web服务器软件`来负责处理协议以及实现部署。
 
-### 下载、配置、启动
+web服务器可以：
 
-下载地址：https://tomcat.apache.org/
+1. 封装HTTP协议，便于web开发
+2. 部署web项目，使其能够通过浏览器访问
 
-选择版本下载zip，解压就行，不需要安装过程。
+### Tomcat服务器
+服务器和部署的程序交互需要接口，而Tomcat支持的是Servlet规范，可以运行Servlet程序，因此也被成为Servlet容器。
 
-**配置端口**： 修改conf/server.xml文件中的Connector port
+工作流程如下：
+1. Client发送http请求给服务器（tomcat）
+2. 如果是静态资源，服务器之间返回页面
+3. 如果是动态资源，查看Web.xml中注册的servlet
+4. 调用对应的servlet实现类（因为tomcat也是知道servlet接口的，并且提供了servlet依赖，所以它知道如何处理servlet类。servlet相当于服务器和java遵循的规则）
 
-**日志乱码**： 修改conf/logging.properties中的java.util.logging.ConsoleHandler.encoding，将UTF-8改为GDK
+**TomCat 下载、配置、启动**
 
-**启动**：双击bin/startup.mat
+下载地址：https://tomcat.apache.org/ 选择版本下载zip，解压就行，不需要安装过程。
 
-### IDEA 配置 Tomcat
+配置端口： 修改conf/server.xml文件中的Connector port
+
+日志乱码： 修改conf/logging.properties中的java.util.logging.ConsoleHandler.encoding，将UTF-8改为GDK
+
+启动：双击bin/startup.mat
+
+**IDEA 配置 Tomcat**
 
 见/Editor/idea.md里的笔记
 
@@ -21,69 +34,65 @@
 
 Servlet是在服务器端运行的java程序，功能有点类似javascript，是用来构建动态页面的。
 
-流程如下：
-1. Client发送http请求给服务器（tomcat）
-2. 如果是静态资源，服务器之间返回页面
-3. 如果是动态资源，查看Web.xml中注册的servlet
-4. 调用对应的servlet实现类（因为tomcat也是知道servlet接口的，并且提供了servlet依赖，所以它知道如何处理servlet类。servlet相当于服务器和java遵循的规则）
+
 
 ### quick start
 
 1. 添加依赖 (javaEE就不需要了)
 
-由于Servlet不是javeSE的一部分，需要先引入依赖
-```
-<dependency>
-    <groupId>javax.servlet</groupId>
-    <artifactId>javax.servlet-api</artifactId>
-    <version>4.0.1</version>
-    <scope>provided</scope>
-</dependency>
-```
+    由于Servlet不是javeSE的一部分，需要先引入依赖
+    ```
+    <dependency>
+        <groupId>javax.servlet</groupId>
+        <artifactId>javax.servlet-api</artifactId>
+        <version>4.0.1</version>
+        <scope>provided</scope>
+    </dependency>
+    ```
 
 2. 实现Sevlet接口
 
-```
-public class HelloServlet implements Servlet {
-    @Override
-    public void init(ServletConfig servletConfig) throws ServletException {
+    ```
+    public class HelloServlet implements Servlet {
+        @Override
+        public void init(ServletConfig servletConfig) throws ServletException {
 
+        }
+
+        @Override
+        public ServletConfig getServletConfig() {
+            return null;
+        }
+
+        @Override
+        public void service(ServletRequest servletRequest, ServletResponse servletResponse) throws ServletException, IOException {
+            System.out.println("service is started");
+        }
+
+        @Override
+        public String getServletInfo() {
+            return null;
+        }
+
+        @Override
+        public void destroy() {
+
+        }
     }
-
-    @Override
-    public ServletConfig getServletConfig() {
-        return null;
-    }
-
-    @Override
-    public void service(ServletRequest servletRequest, ServletResponse servletResponse) throws ServletException, IOException {
-        System.out.println("service is started");
-    }
-
-    @Override
-    public String getServletInfo() {
-        return null;
-    }
-
-    @Override
-    public void destroy() {
-
-    }
-}
-```
+    ```
 
 3. 配置Web.xml文件
 
-```
-<servlet>
-    <servlet-name>demo1</servlet-name>
-    <servlet-class>com.cain.servlets.HelloServlet</servlet-class>
-</servlet>
-<servlet-mapping>
-    <servlet-name>demo1</servlet-name>
-    <url-pattern>/demo1</url-pattern>
-</servlet-mapping>
-```
+    ```
+    <servlet>
+        <servlet-name>demo1</servlet-name>
+        <servlet-class>com.cain.servlets.HelloServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>demo1</servlet-name>
+        <url-pattern>/demo1</url-pattern>
+    </servlet-mapping>
+    ```
 
 ### 生命周期
 

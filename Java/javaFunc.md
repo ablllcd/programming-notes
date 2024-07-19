@@ -52,12 +52,47 @@ public static void main(String[] args){
 ````
 
 ## Classpath
-classpath只是声明去哪里找包，还需要把要用到jar包下载到classpath下。要注意的是jar包的包名**不等于**import的包名，import的包名是jar包的文件结构。
+参考文章：https://www.liaoxuefeng.com/wiki/1252599548343744/1260466914339296
+
+classpath是JVM用到的一个环境变量，它用来指示JVM如何搜索class。
+
+因为Java是编译型语言，源码文件是.java，而编译后的.class文件才是真正可以被JVM执行的字节码。因此，JVM需要知道，如果要加载一个abc.xyz.Hello的类，应该去哪搜索对应的Hello.class文件。
+
+所以，classpath就是一组目录的集合，它设置的搜索路径与操作系统相关，windows下为：
+
+```
+C:\work\project1\bin;C:\shared;"D:\My Documents\project1\bin"
+```
+
+现在我们假设classpath是`.;C:\work\project1\bin;C:\shared`，当JVM在加载abc.xyz.Hello这个类时，会依次查找：
+
+* <当前目录>\abc\xyz\Hello.class
+* C:\work\project1\bin\abc\xyz\Hello.class
+* C:\shared\abc\xyz\Hello.class
+
+classpath只是声明去哪里找包，还需要把要用到class或者jar包下载到classpath下。注意：jar包是多个class文件的压缩包，相当于文件夹。我们不能直接import xxx.jar，因为我们真正要使用的还是class文件。正确做法是将jar包位置放到classpath中，import <class在jar包中的相对位置>，例如：
+
+```
+java -classpath ./hello.jar abc.xyz.Hello
+```
+这会去导入hello.jar包下的abc/xyz/Hello.class。
+
+此外，jar包还可以包含一个特殊的/META-INF/MANIFEST.MF文件，MANIFEST.MF是纯文本，可以指定Main-Class和其它信息。JVM会自动读取这个MANIFEST.MF文件，如果存在Main-Class，我们就不必在命令行指定启动的类名，而是用更方便的命令：
+
+```
+java -jar hello.jar
+```
 
 如果是引用当前包下的类不需要`import`，如果是引用其它包下的类，则需要使用`import`关键字。
 
+## 注解
+
+参考文章： https://www.runoob.com/w3cnote/java-annotation.html
+
 
 ## Reflection 反射
+详情看：https://pdai.tech/md/java/basic/java-basic-x-reflection.html#google_vignette
+
 反射是用来获取类和操作类的，Java也提供了`Class`关键字来引用类。
 
 其应用是可以从更高的层次上操作类，增强泛用性
