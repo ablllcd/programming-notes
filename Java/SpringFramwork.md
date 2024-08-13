@@ -335,7 +335,7 @@ autowire查找setter需要的参数的方式有两种：byType和byName。
 
 byType就是通过setter参数类型在pom文件中找对应类型的bean，所以该方法要求bean为单例
 
-byName很奇怪，没搞懂
+byName则是根据setXXX方法中的XXX作为name，去查找IOC容器中该name对应的bean，从而进行赋值。
 
 ## 基于注解管理bean
 
@@ -370,9 +370,9 @@ public class User {
 
 ### Bean对象的依赖注入
 
-可以使用@Autowired注解实现依赖注入，它等价于xml中的autowire="byType"
+可以使用@Autowired注解实现依赖注入，它和xml中的autowire="xxx"有相同功能，并且能实现更精细的控制。例如xml中设置autowire="byType"是作用于所有setter的，而@Autowired加在哪个方法或属性上，才对该方法或属性进行自动注入。
 
-@Autowried注解可以用于：成员变量，setter，构造器，形参变量。但本质上都是对被注解的元素进行自动依赖注入
+@Autowried注解可以用于：成员变量，setter，构造器，形参变量。其本质是对被注解的元素或方法中的参数进行自动依赖注入。注入规则是先根据Type查找bean，如果有多个bean，则根据name查找bean。
 
 ```
 @Component
@@ -425,6 +425,18 @@ public void userTest(){
     user.card.show();
 }
 ```
+
+### @Bean注解
+
+@Bean 注解是Spring框架中用于声明bean的一种方式。它通常用在配置类(也称作Java Config)中,为Spring容器提供bean的定义。
+
+使用 @Bean 注解的一些基本规则如下:
+
+1. 方法级注解: @Bean 注解通常直接添加在方法声明上,表明该方法将返回一个对象,并且这个对象会被Spring容器管理为一个bean。
+2. bean名称: 默认情况下,bean的名称就是方法名。也可以通过@Bean(name="customName") 的方式来指定bean的名称。
+3. bean作用域: 默认情况下,使用 @Bean 定义的bean作用域为单例(Singleton)。如果需要其他作用域,可以通过 @Scope 注解进行指定。
+4. 依赖注入: 在 @Bean 方法中可以接受参数,这些参数会被Spring自动注入,允许bean之间进行依赖关系的设置。
+5. 初始化和销毁: 可以使用 @Bean(initMethod="init", destroyMethod="destroy") 的方式来指定bean的初始化和销毁方法。
 
 ## IOC原理解析
 

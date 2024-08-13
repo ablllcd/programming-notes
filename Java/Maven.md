@@ -110,6 +110,8 @@ Scope的依赖范围有：
 
 ### 依赖传递
 
+参考：https://www.cnblogs.com/cy0628/p/15034450.html
+
 Maven项目中是有依赖传递特性的，比如 A 依赖 B， B 依赖 C， 那么 A 也会自动导入 C 包。 但是以下情况会让依赖传递断开：
 
 1. 依赖的scope不为compile
