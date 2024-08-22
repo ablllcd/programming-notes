@@ -242,7 +242,14 @@ MySQL中索引是由存储引擎负责的，而关于索引的基本知识这里
 
 1. 红黑树是二叉树，树的深度高，对应的IO次数也多
 2. hash表不适合动态结构，需要时常更新hash函数；此外hash索引是无序的，无法进行范围查找或者排序
-   
+
+索引也有一些使用原则：
+
+1. 对于经常进行查询的字段，为其构建索引
+2. 对于group by, order by的字段，为其构建索引
+3. 相较于单个索引，联合索引的性能更好，因为可以避免回表查询（二次查询索引）
+
+
 ### FullText 索引
 
 对于文本类型的字段，可以构建全文索引，从而方便搜索等功能，其原理如下：
@@ -264,6 +271,24 @@ MySQL中索引是由存储引擎负责的，而关于索引的基本知识这里
 这样可以将最相关的结果排在前面,提高搜索的准确性。
 
 （内容来自GPT，不保证准确性）
+
+### 前缀索引
+
+为varchar, text等文本数据创建索引时，默认还是用b+树构建索引，key是整个文本。而由于文本内容通常较大，会导致整个索引表很大，所以提示前缀索引来解决key太大的问题。
+
+前缀索引的思路很简单，还是使用b+树构建索引，只是key不是整个文本，而是文本的前缀。语法：
+
+```
+create index [index_name] on [table_name]([column_name](n))
+```
+其中column_name后边跟的n就是前缀的长度。前缀越长，索引的区分度越高；前缀越短，索引表越小。
+
+### 联合索引
+
+有时候我们可以拿多个字段来创建索引，这就是联合索引:
+
+![alt text](mysqlPIC/5.png)
+
 
 ### 聚集（一级）索引和二级索引
 
@@ -344,3 +369,168 @@ explain [sql语句]
 5. key: 该表用到的索引
 6. rows: 预计要查询的行数
 7. filtered: 实际用到的行数 / 查询的行数；值越大越好
+
+
+### 索引失效
+
+在一千万条数据中，如果没有对age字段创建索引，那么根据age查找就是全局扫描，耗时约20s；而再对age创建索引后，根据age查找只需要0.01s。然而在一些情况下，有索引也会走全文搜索：
+
+
+**联合索引的失效问题**
+
+在创建索引时，可以为att1,att2,att3三个字段创建一个联合索引。如果查询条件包含att1,att2,att3自然没有问题，直接根据索引进行查询，而如果查询条件中缺少了某个字段，则需要满足`最左前缀法则`。
+
+例如我们创建联合索引时的顺序为att1,att2,att3，那么查询条件中提供的字段也需要从左向右匹配。以下是一些示例：
+
+1. ```select * from table where att1='a', att2='a';```  此时提供了att1和att2，满足att1,att2,att3的顺序，那么att1和att2都根据索引查找
+
+2. ```select * from table where att1='a', att3='a';``` 此时att1能满足，而att2时不满足了，那么只有att1能走索引，att3进行全文搜索。
+
+3. ```select * from table where att2='a', att3='a';``` 此时从att1就不满足了，那么att2和att3都走全文搜索。
+
+此外，某个字段进行范围查询时，也会导致后续索引失效，例如：
+
+```
+select * from table where att1='a', att2>10, att3='a';
+```
+
+此时att3的查找不走索引，而将>更改为>=即可解决问题
+
+```
+select * from table where att1='a', att2 >= 10, att3='a';
+```
+
+此时三个字段都走索引。
+
+
+**运算操作**
+
+如果给字段att1添加索引，那么根据att1查找会走索引。然而，如果根据operate(att1)进行查找则不走索引，例如：
+
+```
+select * from table where substring(att1,10,2) = '15';
+```
+
+**字符串没加引号**
+
+对于字符串类型，加不加单引号都能返回正确结果，然而不加单引号是不走索引的， 例如:
+
+```
+select * from table where phone='123456';   //走索引
+select * from table where phone=123456;   //不走索引
+```
+
+**模糊匹配**
+
+如果只是尾部模糊则走索引，如果包含了头部模糊则全局搜索：
+
+```
+select * from table where phone like '12%';   //走索引
+select * from table where phone like '%56';   //不走索引
+select * from table where phone like '%34%';   //不走索引
+```
+
+**or和and连接**
+
+如果attr1有索引,att2没有索引，那么根据 att1='a' or att2='a'搜索则都不走索引。
+
+如果att1和att2都有索引，两者用and连接，此时也只会选择使用一个索引进行查找，另一个字段进行全文匹配。
+
+
+**数据分布**
+
+如果mysql判断走索引没有走全局扫描快，则不走索引，例如某个字段的条件只能过滤掉10%的数据，那么mysql不走该字段的索引，而是直接进行全局扫描。
+
+### MySQL提示
+
+有时一个字段可能既有单独的索引，又参与了联合索引，那么此时mysql需要自己决定使用哪个索引，而MySQL提示就是帮助MySQL选择索引。
+
+语法：
+```
+select [condition] from [table_name] use [index_name] where [condition]
+select [condition] from [table_name] ignore [index_name] where [condition]
+select [condition] from [table_name] force [index_name] where [condition]
+```
+
+这里有三个关键词：use表示建议使用该索引，ignore表示不用该索引，force表示强制使用该索引。
+
+
+### 缩小select范围
+
+通常我们习惯使用select *，但实际上如果我们需要的数据量比较小，尽量就缩小select的范围。
+
+例如： where condition中我们根据att1字段进行索引得到了att1的值和id值，如果此时我们只需要att1和id，那么只进行一次索引查询即可；如果我们使用select *，那么还需要根据第一次索引得到的id进行回表查询，增加开销。
+
+此外，如果我们需要查询att1和att2两个属性，而where condition中只使用att1，此时我们可以构建联合索引（att1,att2），这样在索引中就可以得到att1和att2.
+
+
+## 优化
+
+### insert 优化
+
+关于插入优化有这几点：
+
+1. 批量插入：避免与数据库多次建立连接的开销
+    ```
+    INSERT INTO TABLE VALUES ([value1]),([value2])
+    ```
+
+2. 手动开启事务：mysql默认自动提交，在多次插入时手动开启事务可以减少事务开启和关闭的开销
+    ```
+    start transaction
+    [insert sql1]
+    [insert sql2]
+    [insert sql3]
+    commit;
+    ```
+
+3. 主键顺序插入
+
+4. 大量数据插入使用load效率更高
+   ```
+   LOAD DATA LOCAL INFILE [local file path] INTO TABLE [table_name]
+   FIELDS TERMINATED BY ','
+   LINES TERMINATED BY '\n';
+   ```
+
+### 主键优化
+
+上述插入时我们提及到主键插入最好是顺序插入，这是因为聚合索引的原因。其中数据会按照主键进行顺序存储，如果乱序插入的话，会导致已存储的数据反复移动。此外，由于数据是存储在`页`上的，当数据进行删除时，页中存储的数据变少，可能会进行与邻接的页进行合并。其中可以设置MERGE_THRESHOLD来设置页数据省多少时进行合并。
+
+主键设计原则：
+
+1. 主键长度尽量小：因为其他二级索引的叶子节点存储的都是主键
+2. 顺序插入，尽量使用auto_increment关键字保证顺序
+3. 避免修改主键，因为要修改所有的索引
+
+### order by 优化
+
+MySQL排序有两种类型：filesort和using index。其中filesort是通过索引或者全局扫描获取数据后，放入到缓冲区然后进行排序；而using index是通过读取索引可以直接获取到排序好的数据。所以我们可以设计索引和查询语句来保证using index类型的排序。
+
+其中排序优化原则有：
+
+1. 能用覆盖索引尽量用覆盖索引。覆盖索引是指查询的字段在索引表中都能拿到，无需回表查询去读取实际的行数据。只有覆盖索引才有可能是using index类型的排序。
+
+2. 查询多个字段时或者多字段排序时使用联合索引，根据排序时要求字段的升序和降序来设计联合索引中字段的升序和降序（默认都为升序）
+
+3. 当不可避免filesort时，如何需要排序的数据量大，可以拓展缓冲区的大小，从而避免磁盘读写。
+
+### group by 优化
+
+思路和order by一致，也是通过覆盖索引来避免查询实际数据，直接通过索引完成分组查询。其中分组也需要注意联合索引的最左匹配问题。
+
+### limit 优化
+
+```
+select * from table limit 10000, 10
+```
+
+当我们要从10000的位置向后读取10条数据时，我们发现此时的开销已经较大，而且随着limit后边的10000继续增大时，开销也会继续增大。
+
+这是因为mysql要读取前10010条实际数据，进行排序然后返回10条数据。其中读取10010条实际数据的开销是很大的。对应的优化方案则是：索引查询+子查询（联合查询）
+
+```
+select * from table where id in (select id from table limit 10000,10)
+```
+
+其中先获取limit数据对应的id，该步骤通过索引即可完成；然后再根据id获取对应的实际数据，从而避免了读取大量的实际数据。
