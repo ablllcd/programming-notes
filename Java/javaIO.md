@@ -40,10 +40,14 @@ public static void main(String[] args) throws Exception {
 ## File与IO流
 File是java.io包下的类，用于代表当前操作系统中的文件。我们可以用它查看和修改文件，但是无法查看或修改文件的内容。如需修改文件内容，则需要IO流。
 
+所以IO流也被认为是`数据传输和存储`的解决方案。
+
 ## IO流
-IO 可以根据输入，输出，字符流（文本文件）和字节流（二进制文件）分为四大类。
+IO 可以根据输入，输出，字符流（纯文本文件）和字节流（二进制文件）分为四大类。
 
 ![Alt text](pic/IO.png)
+
+其中判断是否为纯文本文件的一种方式为：能用windows的记事本打开并读懂。
 
 ### 字节流
 
@@ -91,7 +95,9 @@ public static void main(String[] args) throws Exception {
 而数据输入输出流中，还有个特殊情况：对象（类）。对于对象数据，需要先进行序列化，然后用ObjectInputStream类来存储和读取。注意：对象要序列化需要实现Serializable接口，并可以通过transient关键字指明不参与序列号的成员变量。
 
 ### 资源释放
-由于资源在程序结束时必须释放，为了程序的健硕性，往往使用try-catch-finally来确保资源正确释放。
+资源释放有点想释放锁，例如我没有释放文件a，那么在程序运行中，其他程序想要更改文件a是不被允许的。
+
+为了保证程序释放，往往使用try-catch-finally块。
 
 #### try-catch-finally
 ````
