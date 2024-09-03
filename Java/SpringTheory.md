@@ -761,6 +761,8 @@ public static void mapperSimulation() throws IOException {
 2. 判断该class是不是接口
 3. 为接口生成MapperFactoryBean,并根据MapperFactoryBean构造函数和依赖注入的需要配置BeadDefinitionBuilder。
 
+（关于MapperFactoryBean如何工作的，看视频https://www.bilibili.com/video/BV1P44y1N7QG?p=24&vd_source=9cddb128bdf59e171399ffe93da6d348）
+
 ## Aware和InitializingBean接口
 
 自己写的bean还可以实现各种Aware接口，这些接口用来提供回调函数。回调函数会在bean被创建时由Spring调用，调用时相关参数也会被传进回调函数。
@@ -852,7 +854,7 @@ public class Config1 {
 
 ![alt text](pic/后处理器流程1.png)
 
-这里BeanFactoryPostProcessor执行时，如果发现@Bean注解中没有BeanFactory类型的bean，则会等到配置类创建和初始化后再创建@Bean注解的bean。
+这里BeanFactoryPostProcessor执行时，如果发现@Bean注解中没有BeanFactory类型的bean，则会等到配置类创建和初始化后再创建@Bean注解的bean。（因为@Bean注解是通过注册为工厂方法来生成bean的，所以需要配置类的实例才能运作。而配置类实例的创建需要bean后处理器，所以如何@Bean注解中没有重要的bean，通常会推迟@bean注解生效）
 
 然而，如果BeanFactoryPostProcessor发现配置类中@Bean注解了返回值为BeanFactory类型的方法，则必须立刻创建配置类以及BeanFactory类型的bean，从而确保BeanFactory在最开始都执行了。此时流程如下：
 
