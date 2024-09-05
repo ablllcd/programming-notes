@@ -1077,3 +1077,388 @@ public class MyAspect {
 ### agent处理
 
 还可以通过jvm指令javaagent来实现AOP。这里也不需要将Aspet对象添加为bean，实现原理也是通过直接修改目标类的class文件。
+
+### Spring代理选择
+
+首先简单回顾一下AOP的几个概念：
+
+* 切点(pointcut)：@Before("execution(void foo())")，指明哪些方法进行增强
+* 通知(advice)：代理增强的逻辑
+* 切面(aspect)：一组`切点+通知`
+* 更细粒度的切面(advisor)：一个`切点+通知`
+
+其中aspect底层由advisor实现。
+
+代理流程为：
+```java
+import org.aopalliance.intercept.MethodInterceptor;
+import org.springframework.aop.aspectj.AspectJExpressionPointcut;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.support.DefaultPointcutAdvisor;
+
+public class A15 {
+    public static void main(String[] args) {
+        // 1. 创建切点
+        AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+        pointcut.setExpression("execution(* foo())");
+
+        // 2. 创建通知 (注意这里的MethodInterceptor是AOP包下的，不是CGLIB的)
+        MethodInterceptor advice = invocation -> {
+            System.out.println("前置增强");
+            Object result = invocation.proceed();
+            System.out.println("后置增强");
+            return result;
+        };
+
+        // 3. 创建切面
+        DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+
+        // 4. 创建代理
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.addAdvisor(advisor);
+        proxyFactory.setTarget(new Target1());
+        proxyFactory.setInterfaces(Target1.class.getInterfaces());  //setTarget()方法不会自动判断target是否实现了接口，需要该方法来指明
+        proxyFactory.setProxyTargetClass(true);     //用来选择代理方式，默认为false
+
+        I1 proxy = (I1) proxyFactory.getProxy();
+
+        // 5. 使用代理
+        proxy.foo();
+        proxy.bar();
+    }
+}
+
+interface I1{
+    public void foo();
+
+    public void bar();
+}
+
+class Target1 implements I1{
+
+    @Override
+    public void foo() {
+        System.out.println("Target1 foo");
+    }
+
+    @Override
+    public void bar() {
+        System.out.println("Target1 bar");
+    }
+}
+```
+
+其中我们关注的是ProxyFactory什么时候使用JDK代理，什么时候使用CGLIB代理。
+
+ProxyFactory有setProxyTargetClass方法来设置代理类型，默认值为false，对应JDK代理；当设置为true时则使用CGLIB代理。然而JDK必须有接口，如果ProxyTargetClass为false，而没有通过setInterfaces设置接口，则依旧使用CGLIB代理。
+
+总体来说就是三种类型：
+1. ProxyTargetClass为false，设置了接口，使用JDK代理
+2. ProxyTargetClass为false，没有设置接口，使用CGLIB代理
+3. ProxyTargetClass为true，使用CGLIB代理
+
+### 切点匹配
+
+```java
+import org.springframework.aop.aspectj.AspectJExpressionPointcut;
+import org.springframework.context.annotation.Lazy;
+
+public class A16 {
+    public static void main(String[] args) throws NoSuchMethodException {
+        // 1. 根据表达式进行方法匹配
+        AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+        pointcut.setExpression("execution(* foo())");
+        System.out.println(pointcut.matches(MyTarget1.class.getMethod("foo"), MyTarget1.class));
+        System.out.println(pointcut.matches(MyTarget1.class.getMethod("bar"), MyTarget1.class));
+
+        // 2. 根据注解进行方法匹配
+        AspectJExpressionPointcut pointcut2 = new AspectJExpressionPointcut();
+        pointcut2.setExpression("@annotation(org.springframework.context.annotation.Lazy)");
+        System.out.println(pointcut2.matches(MyTarget2.class.getMethod("foo"), MyTarget2.class));
+        System.out.println(pointcut2.matches(MyTarget2.class.getMethod("bar"), MyTarget2.class));
+    }
+}
+
+class MyTarget1 {
+    public void foo() {
+        System.out.println("MyTarget1.foo()");
+    }
+
+    public void bar() {
+        System.out.println("MyTarget1.bar()");
+    }
+}
+
+class MyTarget2 {
+    public void foo() {
+        System.out.println("MyTarget2.foo()");
+    }
+
+    @Lazy
+    public void bar() {
+        System.out.println("MyTarget2.bar()");
+    }
+}
+```
+
+切点匹配的逻辑还是比较简单的，就是遍历所有类上的方法，然后调用match方法来判断该方法是否匹配。match方法则根据表达式和当前方法来判断是否匹配。
+
+在上述的方法增强中，match应该只需要方法信息即可；然而对于一些加在类上的注解，要对它们进行匹配则需要类信息，所以match方法的接口要求提供类信息和方法信息。
+
+### Aspect 和 Advisor
+
+```java
+import org.aopalliance.aop.Advice;
+import org.aopalliance.intercept.MethodInterceptor;
+import org.aspectj.lang.annotation.After;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.aop.Advisor;
+import org.springframework.aop.aspectj.AspectJExpressionPointcut;
+import org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator;
+import org.springframework.aop.framework.autoproxy.AbstractAdvisorAutoProxyCreator;
+import org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator;
+import org.springframework.aop.support.DefaultPointcutAdvisor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ConfigurationClassPostProcessor;
+import org.springframework.context.support.GenericApplicationContext;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.List;
+
+public class A017Application {
+
+    public static void main(String[] args) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        // 1.创建IOC容器，添加目标类和负责切面的后处理器
+        GenericApplicationContext context = new GenericApplicationContext();
+        context.registerBean(Target.class);
+        context.registerBean(Aspect1.class);
+        context.registerBean(Config.class);
+        context.registerBean(ConfigurationClassPostProcessor.class);            //处理配置类
+        context.registerBean(AnnotationAwareAspectJAutoProxyCreator.class);     //处理切面的后处理器
+        context.refresh();
+
+//        for (String name : context.getBeanDefinitionNames()) {
+//            System.out.println(name);
+//        }
+
+        // 2.测试负责切面的后处理器的核心方法1：检测目标类有几个切面
+        AnnotationAwareAspectJAutoProxyCreator creator = context.getBean(AnnotationAwareAspectJAutoProxyCreator.class);
+        // 由于AnnotationAwareAspectJAutoProxyCreator中的方法是protected的，所以这里用反射来调用
+        Method findEligibleAdvisors = AbstractAdvisorAutoProxyCreator.class.getDeclaredMethod("findEligibleAdvisors", Class.class, String.class);
+        findEligibleAdvisors.setAccessible(true);
+        // 调用findEligibleAdvisors获取IOC容器中对Target生效的advisor
+        List<Advisor> advisors = (List<Advisor>) findEligibleAdvisors.invoke(creator, Target.class, "target");
+        // 总共获取到4个advisor，一个spring自动添加的，一个配置类中的advisor，两个从@Aspect中获得的
+        for (Advisor advisor : advisors) {
+            System.out.println(advisor);
+        }
+
+        // 3.测试负责切面的后处理器的核心方法2：为目标类创建代理对象，实现切面逻辑
+        Method wrapIfNecessary = AbstractAutoProxyCreator.class.getDeclaredMethod("wrapIfNecessary", Object.class, String.class, Object.class);
+        wrapIfNecessary.setAccessible(true);
+        Object proxyTarget = wrapIfNecessary.invoke(creator, new Target(), "target", "target");
+        System.out.println(proxyTarget.getClass());
+        ((Target) proxyTarget).foo();
+    }
+}
+
+class Target{
+    public void foo(){
+        System.out.println("Target foo");
+    }
+
+    public void bar(){
+        System.out.println("Target bar");
+    }
+}
+
+@Aspect
+class Aspect1{
+    @Before("execution(* foo())")
+    public void before(){
+        System.out.println("Aspect1 before");
+    }
+
+    @After("execution(* foo())")
+    public void after(){
+        System.out.println("Aspect1 after");
+    }
+}
+
+@Configuration
+class Config{
+    @Bean
+    public Advisor advisor2(Advice advice){
+        AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+        pointcut.setExpression("execution(* foo())");
+        return new DefaultPointcutAdvisor(pointcut,advice);
+    }
+
+    @Bean
+    public Advice advice(){
+        MethodInterceptor methodInterceptor = invocation -> {
+            System.out.println("Advisor2 before");
+            Object result = invocation.proceed();
+            System.out.println("Advisor2 after");
+            return result;
+        };
+        return methodInterceptor;
+    }
+}
+```
+
+上述代码测试了advisor和@Aspect的用法，其中展示了一个核心的后处理器：AnnotationAwareAspectJAutoProxyCreator。该后处理器负责处理切面，@Aspect注解的切面也会被转换为多个advisor切面。
+
+该注解有两个核心方法：
+
+1. findEligibleAdvisors：为target类查找作用在该类上的切面
+2. wrapIfNecessary：为target类创建代理并且实现切面逻辑
+
+### 代理创建时机
+
+```java
+import jakarta.annotation.PostConstruct;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.CommonAnnotationBeanPostProcessor;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ConfigurationClassPostProcessor;
+import org.springframework.context.support.GenericApplicationContext;
+
+public class ProxyCreateTime {
+    public static void main(String[] args) {
+        GenericApplicationContext context = new GenericApplicationContext();
+        context.registerBean(ConfigurationClassPostProcessor.class);            //处理@Config
+        context.registerBean(AnnotationAwareAspectJAutoProxyCreator.class);     //处理@Aspect
+        context.registerBean(CommonAnnotationBeanPostProcessor.class);          //处理@PostConstructor
+        context.registerBean(AutowiredAnnotationBeanPostProcessor.class);       //处理@Autowired
+        context.registerBean(MyConfig.class);
+        context.registerBean(MyAspect.class);
+        context.refresh();
+    }
+
+    @Aspect
+    public static class MyAspect {
+        @Before("execution(* foo())")
+        public void before() {
+            System.out.println("MyAspect Before execution");
+        }
+    }
+
+    @Configuration
+    static class MyConfig{
+        @Bean
+        public Bean1 bean1(){
+            return new Bean1();
+        }
+
+        @Bean
+        public Bean2 bean2(){
+            return new Bean2();
+        }
+    }
+
+    static class Bean1{
+        public void foo(){
+            System.out.println("Bean1 Foo");
+        }
+
+        public Bean1(){
+            System.out.println("Bean1 Constructor");
+        }
+
+        // 这里就构成了循环依赖，产生不同的代理时机
+//        @Autowired
+//        public void setBean2(Bean2 bean2){
+//            System.out.println("Bean1 setBean2 as" + bean2.getClass());
+//        }
+
+        @PostConstruct
+        public void postConstruct(){
+            System.out.println("Bean1 init");
+        }
+    }
+
+    static class Bean2{
+        public Bean1 bean1;
+
+        public Bean2(){
+            System.out.println("Bean2 Constructor");
+        }
+
+        @Autowired
+        public void setBean1(Bean1 bean1){
+            this.bean1 = bean1;
+            System.out.println("Bean2 setBean1 as "+bean1.getClass());
+        }
+
+        @PostConstruct
+        public void postConstruct(){
+            System.out.println("Bean2 init");
+        }
+    }
+}
+```
+
+在bean的生命周期中，创建代理对象的时机有两个：构造->(代理)依赖注入->初始化(代理)
+
+1. 依赖注入前：如果出现循环依赖则在此时创建代理
+2. 初始化后：正常情况在此时创建代理
+
+这一块在循环依赖会有详细说明。
+
+### 切面执行顺序
+
+一个目标类可以添加多个切面，而切面的执行顺序也是可以通过@Order注解控制的，order值越小越先执行。
+
+不过@Order注解对于方法是不生效的，如果切面类实现了Order相关的接口，也可以通过setOrder方法来设置order。
+
+### @Aspect解析为Advisor
+
+```java
+public class AspectToAdvisor {
+    public static void main(String[] args) {
+        // 1.查找Aspect注解的类
+        if(MyAspect.class.isAnnotationPresent(Aspect.class)){
+            // 2.查找@Befor注解的方法
+            for (Method method : MyAspect.class.getDeclaredMethods()) {
+                if(method.isAnnotationPresent(Before.class)){
+                    // 3. 根据@Before中的值创建切点
+                    String expression = method.getAnnotation(Before.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    // 4. 根据@Befor选择通知类型，根据Method创建通知
+                    SingletonAspectInstanceFactory factory =
+                            new SingletonAspectInstanceFactory(new MyAspect());    // method的调用需要实例
+                    AspectJMethodBeforeAdvice advice = new AspectJMethodBeforeAdvice(method, pointcut, factory);
+
+                    // 5. 创建切面
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    System.out.println(advisor);
+                }
+            }
+        }
+    }
+}
+
+@Aspect
+class MyAspect{
+    @Before("execution(* foo())")
+    public void before(){
+        System.out.println("Before Aspect");
+    }
+}
+```
+
+上述是@Before注解的切面解析为Advisor的大体思路，注解足够多，不再赘述
+
+
+

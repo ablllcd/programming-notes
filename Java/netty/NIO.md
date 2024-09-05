@@ -66,3 +66,38 @@ public class TestByteBuffer
 }
 ```
 
+可以看出channel和buffer的使用还是很简单的，需要注意的是buffer需要切换读写模式，这和buffer的内部结构有关。
+
+### ByteBuffer内部结构
+
+ByteBuffer类似于数组，内部有三个重要的变量：
+* capability: 指示buffer的大小
+* limit：指示读或者写的范围
+* position：指示当前的读写位置
+
+其中数据总是从position开始读写，达到limit时则不允许继续读写。
+
+初始情况如图：
+
+![alt text](pic/ByteBuffer内部结构1.png)
+
+当buffer中写入数据后：
+
+![alt text](pic/ByteBuffer内部结构2.png)
+
+此时如果要读取buffer，则需要flip()函数来切换position和Limit的位置：
+
+![alt text](pic/ByteBuffer内部结构3.png)
+
+此时如果要从读取转为写入，则需要通过clear()再次更改position和limit的位置：
+
+![alt text](pic/ByteBuffer内部结构4.png)
+
+由于clear会将positon放到开头，limit放到结尾，如果上次读取没有将buffer读取完，则会导致数据丢失。所以还要compact方法：
+
+![alt text](pic/ByteBuffer内部结构5.png)
+
+总体来说，ByteBuffer是通过position和limit工作的，由于读写需要不同的postion和limit的位置，所以需要flip,clear,compact方法来更改position和limit指针的位置。
+
+
+

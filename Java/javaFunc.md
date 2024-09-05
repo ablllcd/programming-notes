@@ -138,7 +138,7 @@ java -jar hello.jar
 
 * 静态代理：所谓静态也就是在程序运行前就已经存在代理类的字节码文件，代理类和真实主题角色的关系在运行前就确定了。
 
-* 动态代理：而动态代理的源码是在程序运行期间由JVM根据`反射`等机制动态的生成，所以在运行前并不存在代理类的字节码文件
+* 动态代理：而动态代理的字节码是在程序运行期间由JVM根据`反射`等机制动态的生成，所以在运行前并不存在代理类的字节码文件
 
 
 ### 静态代理
@@ -266,7 +266,7 @@ JDK动态代理主要依赖java.lang.reflect.Proxy类，它有一个方法可以
 
 **Proxy.newProxyInstance**创建要求的参数：
 
-ClassLoader 和 interfaces： 它们跟反射有关，Proxy类会根据目标类实现的interfaces和ClassLoader来创建类。（也就是被创建的代理类只有interfaces中的方法）
+ClassLoader 和 interfaces： 它们跟反射有关，Proxy类会根据目标类实现的interfaces来创建类（也就是被创建的代理类只有interfaces中的方法）。ClassLoader则负责将动态创建的字节码加载进来。
 
 InvocationHandler：描述代理对象应该做的事。
 
@@ -348,6 +348,15 @@ public final class UserServiceProxy extends Proxy implements UserService {
 著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
 ```
 
+**注意事项**
+
+1. 代理对象是通过目标对象的接口来创建的，所以必须要有接口
+2. 代理对象和目标对象都实现了相同接口，所以是兄弟关系
+
+**原理讲解**
+
+https://www.bilibili.com/video/BV1P44y1N7QG?p=36&spm_id_from=pageDriver&vd_source=9cddb128bdf59e171399ffe93da6d348
+
 #### CGLIB动态代理
 
 CGLIB是一个第三方包，它没有利用反射技术，而是利用ASM字节码生成框架来实现。
@@ -389,7 +398,7 @@ CGLib实现动态代理的原理是：直接对需要代理的类的字节码进
         @Override
         public Object intercept(Object o, Method method, Object[] objects, MethodProxy methodProxy) throws Throwable {
             before();
-            Object result = methodProxy.invokeSuper(o, objects);   // 注意这里是调用 invokeSuper 而不是 invoke，否则死循环，methodProxy.invokesuper执行的是原始类的方法，method.invoke执行的是子类的方法
+            Object result = methodProxy.invokeSuper(o, objects);   // 注意这里是调用 invokeSuper 而不是 invoke，否则死循环，methodProxy.invokesuper执行的是原始类的方法，methodProxy.invoke执行的是子类(代理类)的方法
             after();
             return result;
         }
