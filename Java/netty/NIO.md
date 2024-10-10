@@ -204,9 +204,7 @@ public static void main(String[] args) throws IOException {
 1. 将一个文件读入到多个buffer中
 2. 将多个buffer的内容拷贝到同一个文件中
 
-而分散读就可以直接将文件中的内容拷贝到多个buffer中，而不是先读取到一个buffer，然后再次拷贝到不同的buffer。
-
-而集中写则是一次IO完成多个buffer的写入，避免多次IO。
+分散读就可以直接将文件中的内容拷贝到多个buffer中，而不是先读取到一个buffer，然后再次拷贝到不同的buffer。而集中写则是一次IO完成多个buffer的写入，避免多次IO。
 
 ### 字符串操作
 
@@ -229,7 +227,7 @@ Charset类提供了encode和decode方法来方便处理字符串和buffer之间�
 
 ### 注意事项
 
-1. FileChannel只能工作在阻塞模式下
+1. FileChannel只能工作在阻塞模式下，即不能配合selector使用
 
 ### 获取FileChannel
 
@@ -242,8 +240,8 @@ Charset类提供了encode和decode方法来方便处理字符串和buffer之间�
 ### FileChannel读写
 
 ```java
-// 读取
-channel.read(buffer);
+// 读取数据到buffer, 返回读取的byte数，-1表示读取到文件结尾
+int readBytes = channel.read(buffer);
 
 //写入
 while(buffer.hasRemaining()){
@@ -260,13 +258,14 @@ while(buffer.hasRemaining()){
 public static void main(String[] args) {
     try (FileChannel from = new FileInputStream("data.txt").getChannel();
             FileChannel to = new FileOutputStream("to.txt").getChannel()) {
-        // 效率比单纯的inputstream,outputstream高，因为底层使用了操作系统的零拷贝
+        // 参数为：传输起始位置；传输数据量；目标Channel
         from.transferTo(0, from.size(), to);
     } catch (IOException e) {
         e.printStackTrace();
     }
 }
 ```
+transferTo效率比单纯的inputstream,outputstream高，因为底层使用了操作系统的零拷贝（TBD: 零拷贝是什么）
 
 两文件之间进行数据传输的核心函数就是transferTo，但是该方法一次最多传输2g大小的数据量，所以文件过大时需要利用循环进行多次传输：
 
@@ -689,3 +688,282 @@ public class WriteServer {
 ```
 
 其核心是让socketChannel关注write事件，这样当网络空闲时write事件会被触发，sc可以继续写入操作。
+
+### 多线程下的selector使用
+
+单线程只用selector已经可以不阻塞地处理多个客户端连接，但是这不能发挥出多CPU的优势。为此这里介绍多线程下selector的使用。
+
+![alt text](pic/Selector-4.png)
+
+多线程下，每个线程都有一个selector，每个selector可以处理多个SocketChannel。其中将一个线程作为BOSS线程，它只负责监听客户端的连接，然后将客户端连接分配到其余的worker线程上，由worker线程负责客户端的读写。
+
+服务端代码如下
+
+```java
+package com.cain;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.nio.charset.Charset;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class MultiThreadServer {
+    public static void main(String[] args) throws IOException {
+        // 创建监听socket
+        ServerSocketChannel ssc = ServerSocketChannel.open();
+        ssc.bind(new InetSocketAddress("127.0.0.1", 8888));
+        ssc.configureBlocking(false);
+
+        // 将ssc绑定到selector上
+        Selector bossSelector = Selector.open();
+        ssc.register(bossSelector, SelectionKey.OP_ACCEPT, null);
+
+        // 创建一些工作线程来处理客户端的读写任务，线程数通常取决于CPU核心数
+        WorkerThread[] workers = new WorkerThread[2];
+        for (int i = 0; i < workers.length; i++) {
+            workers[i] = new WorkerThread("worker-"+i);
+        }
+        AtomicInteger index = new AtomicInteger(0);
+
+        // 该线程只负责处理ssc，也就是只负责ACCEPT事件
+        while (true) {
+            bossSelector.select();
+            Set<SelectionKey> keys = bossSelector.selectedKeys();
+            Iterator<SelectionKey> iterator = keys.iterator();
+            while (iterator.hasNext()) {
+                SelectionKey selectionKey = iterator.next();
+                iterator.remove();
+                if (selectionKey.isAcceptable()) {
+                    ServerSocketChannel channel = (ServerSocketChannel) selectionKey.channel();
+                    SocketChannel socketChannel = channel.accept();
+                    socketChannel.configureBlocking(false);
+                    System.out.println("client connected from " + socketChannel.getRemoteAddress());
+                    // 将socketChannel注册到工作线程，这里使用轮询来分配给workers
+                    workers[index.getAndIncrement() % workers.length].register(socketChannel);
+                    System.out.println("client registered");
+                }
+            }
+        }
+    }
+
+    static class WorkerThread implements Runnable {
+        private String name;
+        private Thread thread;
+        private Selector selector;
+        private Boolean started = false;
+        private ConcurrentLinkedQueue<Runnable> taskQueue = new ConcurrentLinkedQueue();
+
+        public WorkerThread(String name){
+            this.name = name;
+        }
+
+        public void register(SocketChannel socketChannel) throws IOException {
+            // 1. 第一次注册客户端时，创建线程和该线程对应的selector
+            if (!started) {
+                selector = Selector.open();
+                thread = new Thread(this);
+                thread.start();
+                started = true;
+            }
+            // 2. 这段在boss线程中执行，将"客户端注册到selector"这项任务添加到工作线程的队列
+            // 这是让任务在工作线程中执行，从而控制客户端注册和selector与select方法的执行顺序
+            taskQueue.add(()->{
+                try {
+                    socketChannel.register(selector,SelectionKey.OP_READ,null);
+                } catch (ClosedChannelException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            // 3. boss线程不知道work线程是否阻塞，所以每次有客户端注册时都进行唤醒；
+            // 注意wakeup先于select调用也会让线程不进入阻塞态
+            selector.wakeup();
+        }
+
+        // 工作线程的内容
+        @Override
+        public void run() {
+            while (true){
+                try {
+                    // 检查taskQueue，将客户端进行注册
+                    while (!taskQueue.isEmpty()){
+                        taskQueue.poll().run();
+                    }
+                    // 执行selector执行绑定的客户端的READ任务
+                    selector.select();
+                    Set<SelectionKey> selectionKeys = selector.selectedKeys();
+                    Iterator<SelectionKey> iterator = selectionKeys.iterator();
+                    while (iterator.hasNext()) {
+                        SelectionKey selectionKey = iterator.next();
+                        iterator.remove();
+                        if (selectionKey.isReadable()) {
+                            ByteBuffer buffer = ByteBuffer.allocate(1024);
+                            SocketChannel channel = (SocketChannel) selectionKey.channel();
+                            int readBytes = channel.read(buffer);
+                            if (readBytes > 0) {
+                                buffer.flip();
+                                System.out.println(name +": "+Charset.defaultCharset().decode(buffer).toString());
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+}
+```
+
+客户端代码如下
+```java
+public class ClientTest {
+    public static void main(String[] args) throws IOException {
+        SocketChannel channel = SocketChannel.open();
+        channel.connect(new InetSocketAddress("127.0.0.1", 8888));
+        ByteBuffer buffer = Charset.defaultCharset().encode("hello wold");
+        channel.write(buffer);
+        channel.close();
+    }
+}
+```
+
+其中需要注意的点有：
+
+1. worker线程运行起来后，通常会阻塞在select函数上；此时是无法将SocketChannel注册到该selector上的。所以需要wakeup来唤醒。
+2. boss线程和worker线程之间的数据传输是通过taskQueue实现的。boss线程会将注册任务交给worker线程去做，是为了保证register和select函数在一个线程中，这样能保证二者的执行顺序。
+
+## 概念解释
+
+### Stream和Channel的异同
+
+1. Stream不会自动缓存数据；Channel是会自动缓存数据的
+2. Stream只支持阻塞式读写；Channel支持阻塞和非阻塞，所以可以配合Selector和非阻塞的accept,read等方法实现非阻塞IO.
+3. 二者皆为全双工，即每个实例都可读可写
+
+### IO类型
+
+IO类型根据不同的阻塞情况被分为了5类：
+
+* 同步阻塞
+* 同步非阻塞
+* 多路复用
+* 异步非阻塞
+* 信号驱动
+
+在了解每种类型之前，先了解IO的过程：
+
+![alt text](pic/IO模型-1.png)
+
+在用户态中调用IO函数，本质上还是需要调用操作系统进行相关操作。而操作系统对应read,write,accept等操作都需要进行“等待”和“处理”两步骤。不同的IO类型会阻塞在不同的步骤上。
+
+**同步阻塞：**
+
+![alt text](pic/IO模型-2.png)
+
+最简单的模式，用户线程从"等待数据"阻塞到"处理完成"。
+
+**同步非阻塞：**
+
+![alt text](pic/IO模型-3.png)
+
+read函数调用后查看等待的数据是否到来，如果未到来则返回而不是阻塞等待。由于同步非阻塞往往写在while(true)循环中，所以会反复调用read函数，直到数据到来，然后阻塞地处理数据。
+
+**多路复用：**
+
+![alt text](pic/IO模型-4.png)
+
+该模型要在多个事件中才能体现出来，例如一个selector绑定多个channel。此时select会阻塞在等待事件过程中，在等待结束可以返回多个要处理的事件，例如read和accept，然后阻塞地处理read和accept。
+
+这个过程跟同步阻塞是比较类似的，两者在"等待"和"处理"阶段都是阻塞的。区别是，当用户进程调用accept和read后，同步阻塞需要按照代码顺序：等待accept,处理accept，等待read,处理read。而多路复用则可以同时等待accept和read。这也体现出“多路复用”的感觉了。
+
+**异步非阻塞：**
+
+* 同步：单个线程完成所有事
+* 异步：让其它线程帮你完成事情，并将结果返回给你，至少需要两个线程
+
+上述同步非阻塞时，用户线程调用read虽然不需要等待数据，但是需要反复调用read来检查数据是否到来，这也是很大的开销。异步非阻塞则无需反复检查：
+
+![alt text](pic/IO模型-5.png)
+
+用户线程(A)调用read后会让另一个线程(B)来实现对应的系统调用，当B做完等待和处理后，则调用A提供的回调函数来将结果传递给A。
+
+```java
+public class AysnIOTest {
+    public static void main(String[] args) throws IOException, InterruptedException {
+        // 为文件创建file channel
+        AsynchronousFileChannel channel = AsynchronousFileChannel.open(Paths.get("data.txt"), StandardOpenOption.READ);
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+        System.out.println("before read");
+        // 异步调用，操作系统会创建线程来执行read操作，并在执行结束后调用回调类
+        // 参数：1.数据输出到的buffer 2.文件读取起始位置 3.文件未读取完使用的buffer 4.回调类
+        channel.read(buffer,0,buffer,new CompletionHandler<Integer, ByteBuffer>() {
+            @Override   //回调函数：在read成功后调用
+            public void completed(Integer result, ByteBuffer attachment) {
+                System.out.println("read finished - " + result);
+                attachment.flip();
+                System.out.println(StandardCharsets.UTF_8.decode(attachment).toString());
+            }
+
+            @Override   //回调函数：read失败后调用
+            public void failed(Throwable exc, ByteBuffer attachment) {
+                System.out.println("read failed");
+            }
+        });
+        System.out.println("after read");
+
+        // 由于系统创建的是守护线程，这里主动等待一下它
+        Thread.sleep(1000);
+    }
+}
+```
+
+### 零拷贝
+
+```java
+RandomAccessFile file = new RandomAccessFile(file, "r");
+
+byte [] buf = new byte[(int)f.length()];
+file.read(buf);
+
+Socket socket = ...;
+socket.getOutputStream().write(buf);
+```
+
+上述情况没有使用channel，数据拷贝情况如图
+
+![alt text](pic/零拷贝-1.png)
+
+1. 拷贝次数4次
+2. 内核态切换3次：read将用户态-内核态；read结束内核态-用户态；write将用户态切到内核态
+3. CPU使用情况：1，4拷贝由硬件负责；2，3拷贝由CPU负责
+
+**使用DirectBuffer优化**
+
+![alt text](pic/零拷贝-2.png)
+
+DirectBuffer是在操作系统层面申请一块内存，可以直接将磁盘中的数据拷贝到这块内存。但是这块内存中的数据拷贝到socket还是由CPU实现，内核态切换次数也不减少。
+
+1. 拷贝次数3次
+2. 内核态切换3次：read将用户态-内核态；read结束内核态-用户态；write将用户态切到内核态
+3. CPU使用情况：1，3拷贝由硬件负责；2拷贝由CPU负责
+
+**使用transferTo进行零拷贝**
+
+![alt text](pic/零拷贝-3.png)
+
+使用transferTo时，磁盘和网卡使用同一块操作系统的缓冲区，无需用户态的CPU和内存。
+
+1. 拷贝次数2次
+2. 内核态切换1次：transferTo将用户态-内核态；
+3. CPU使用情况：1，2拷贝由硬件负责；
+
+注意：
+
+* 零拷贝不是说无需拷贝，只是最少次数的拷贝
+* 零拷贝不适用于大文件，因为只是用了操作系统的缓冲区，而且读写用同一块，导致缓冲区大小有限。
