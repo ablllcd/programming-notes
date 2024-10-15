@@ -7,6 +7,18 @@ Docker也有自己的仓库来储存镜像。
 
 Docker分别提供了GUI和命令行来允许用户使用。
 
+## 安装
+
+DOCKER官网有关于WINDOWS下安装的教程
+
+1. 首先保证WSL的版本并且安装一个LINUX虚拟机
+
+```
+wsl --update    
+wsl --install
+```
+
+2. 从官网下载docker安装器进行安装即可
 
 ## 命令
 #### 镜像操作
