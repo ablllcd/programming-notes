@@ -8,7 +8,7 @@
 
 进程的特征：并发性、异步性、动态性、独立性、结构性
 
-**线程**：线程是属于进程的，是一个基本的 CPU 执行单元，是程序执行流的最小单元。线程是进程中的一个实体，是系统**独立调度的基本单位**，线程本身不拥有系统资源，只拥有一点在运行中必不可少的资源，与同属一个进程的其他线程共享进程所拥有的全部资源
+线程：线程是属于进程的，是一个基本的 CPU 执行单元，是程序执行流的最小单元。线程是进程中的一个实体，是系统**独立调度的基本单位**，线程本身不拥有系统资源，只拥有一点在运行中必不可少的资源，与同属一个进程的其他线程共享进程所拥有的全部资源
 
 关系：一个进程可以包含多个线程，这就是多线程，比如看视频是进程，图画、声音、广告等就是多个线程
 
@@ -29,12 +29,6 @@
 参考视频：https://www.bilibili.com/video/BV16J411h7Rd
 
 笔记的整体结构依据视频编写，并随着学习的深入补充了很多知识
-
-
-
-***
-
-
 
 ### 对比
 
@@ -66,15 +60,6 @@
   **Java 中的通信机制**：volatile、等待/通知机制、join 方式、InheritableThreadLocal、MappedByteBuffer
 
 * 线程更轻量，线程上下文切换成本一般上要比进程上下文切换低
-
-
-
-
-
-***
-
-
-
 
 
 ## 线程
@@ -358,14 +343,14 @@ public class Test {
     private static void test1() throws InterruptedException {
         Thread t1 = new Thread(() -> {
             try {
-                Thread.sleep(1000);
+                Thread.sleep(10000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
             r = 10;
         });
         t1.start();
-        t1.join();//不等待线程执行结束，输出的10
+        t1.join();
         System.out.println(r);
     }
 }
@@ -778,7 +763,7 @@ Java：
 
 
 
-### syn-ed
+### synchronized
 
 #### 使用锁
 
@@ -1494,7 +1479,7 @@ class TestLiveLock {
 
 
 
-### wait-ify
+### wait-notify
 
 #### 基本使用
 
@@ -1515,7 +1500,7 @@ public final native void wait(long timeout):有时限的等待, 到n毫秒后结
 
 * 原理不同：sleep() 方法是属于 Thread 类，是线程用来控制自身流程的，使此线程暂停执行一段时间而把执行机会让给其他线程；wait() 方法属于 Object 类，用于线程间通信
 * 对**锁的处理机制**不同：调用 sleep() 方法的过程中，线程不会释放对象锁，当调用 wait() 方法的时候，线程会放弃对象锁，进入等待此对象的等待锁定池（不释放锁其他线程怎么抢占到锁执行唤醒操作），但是都会释放 CPU
-* 使用区域不同：wait() 方法必须放在**同步控制方法和同步代码块（先获取锁）**中使用，sleep() 方法则可以放在任何地方使用
+* 使用区域不同：wait() 方法必须放在**同步控制方法和同步代码块**中使用（先获取锁），sleep() 方法则可以放在任何地方使用
 
 底层原理：
 
@@ -1574,7 +1559,7 @@ public class demo {
             synchronized (room) {
                 Thread thread = Thread.currentThread();
                 log.debug("外卖送到没？[{}]", hasTakeout);
-                if (!hasTakeout) {
+                while (!hasTakeout) {
                     log.debug("没外卖，先歇会！");
                     try {
                         room.wait();
@@ -1614,7 +1599,7 @@ public class demo {
 
 
 
-### park-un
+### park-unpark
 
 LockSupport 是用来创建锁和其他同步类的**线程原语**
 
@@ -2213,7 +2198,7 @@ JMM 作用：
 * 主内存主要对应于 Java 堆中的对象实例数据部分，而工作内存则对应于虚拟机栈中的部分区域
 * 从更低层次上说，主内存直接对应于物理硬件的内存，工作内存对应寄存器和高速缓存
 
-
+推荐文章：https://blog.csdn.net/ThinkWon/article/details/102073578
 
 ***
 
@@ -2288,16 +2273,19 @@ public static void main(String[] args) throws InterruptedException {
 
 原子性：不可分割，完整性，也就是说某个线程正在做某个具体业务时，中间不可以被分割，需要具体完成，要么同时成功，要么同时失败，保证指令不会受到线程上下文切换的影响 
 
-定义原子操作的使用规则：
+Java 内存模型保证了 read、load、use、assign、store、write、lock 和 unlock 操作具有原子性，例如对一个 int 类型的变量执行 assign 赋值操作，这个操作就是原子性的。但是 Java 内存模型允许虚拟机将没有被 volatile 修饰的 64 位数据（long，double）的读写操作划分为两次 32 位的操作来进行，即 load、store、read 和 write 操作可以不具备原子性。
+
+
+原子操作的使用规则：
 
 1. 不允许 read 和 load、store 和 write 操作之一单独出现，必须顺序执行，但是不要求连续
-1. 不允许一个线程丢弃 assign 操作，必须同步回主存
-1. 不允许一个线程无原因地（没有发生过任何 assign 操作）把数据从工作内存同步会主内存中
-2. 一个新的变量只能在主内存中诞生，不允许在工作内存中直接使用一个未被初始化（assign 或者 load）的变量，即对一个变量实施 use 和 store 操作之前，必须先自行 assign 和 load 操作
-3. 一个变量在同一时刻只允许一条线程对其进行 lock 操作，但 lock 操作可以被同一线程重复执行多次，多次执行 lock 后，只有**执行相同次数的 unlock** 操作，变量才会被解锁，**lock 和 unlock 必须成对出现**
-4. 如果对一个变量执行 lock 操作，将会**清空工作内存中此变量的值**，在执行引擎使用这个变量之前需要重新从主存加载
-5. 如果一个变量事先没有被 lock 操作锁定，则不允许执行 unlock 操作，也不允许去 unlock 一个被其他线程锁定的变量
-6. 对一个变量执行 unlock 操作之前，必须**先把此变量同步到主内存**中（执行 store 和 write 操作）
+2. 不允许一个线程丢弃 assign 操作，必须同步回主存
+3. 不允许一个线程无原因地（没有发生过任何 assign 操作）把数据从工作内存同步会主内存中
+4. 一个新的变量只能在主内存中诞生，不允许在工作内存中直接使用一个未被初始化（assign 或者 load）的变量，即对一个变量实施 use 和 store 操作之前，必须先自行 assign 和 load 操作
+5. 一个变量在同一时刻只允许一条线程对其进行 lock 操作，但 lock 操作可以被同一线程重复执行多次，多次执行 lock 后，只有**执行相同次数的 unlock** 操作，变量才会被解锁，**lock 和 unlock 必须成对出现**
+6. 如果对一个变量执行 lock 操作，将会**清空工作内存中此变量的值**，在执行引擎使用这个变量之前需要重新从主存加载
+7. 如果一个变量事先没有被 lock 操作锁定，则不允许执行 unlock 操作，也不允许去 unlock 一个被其他线程锁定的变量
+8. 对一个变量执行 unlock 操作之前，必须**先把此变量同步到主内存**中（执行 store 和 write 操作）
 
 
 
@@ -2321,13 +2309,11 @@ CPU 的基本工作是执行存储的指令序列，即程序，程序的执行�
 
 * 单线程环境也存在指令重排，由于存在依赖性，最终执行结果和代码顺序的结果一致
 * 多线程环境中线程交替执行，由于编译器优化重排，会获取其他线程处在不同阶段的指令同时执行
+* 简单示例：https://blog.csdn.net/qq_34626094/article/details/124413044
 
 补充知识：
 
-* 指令周期是取出一条指令并执行这条指令的时间，一般由若干个机器周期组成
-* 机器周期也称为 CPU 周期，一条指令的执行过程划分为若干个阶段（如取指、译码、执行等），每一阶段完成一个基本操作，完成一个基本操作所需要的时间称为机器周期
-* 振荡周期指周期性信号作周期性重复变化的时间间隔
-
+* 数据依赖（上述内容太简略，该博客是很好的补充）： https://blog.csdn.net/ThinkWon/article/details/102073858
 
 
 ***
@@ -2751,15 +2737,15 @@ private static volatile SingletonDemo INSTANCE = null;
 
 happens-before 先行发生
 
-Java 内存模型具备一些先天的“有序性”，即不需要通过任何同步手段（volatile、synchronized 等）就能够得到保证的安全，这个通常也称为 happens-before 原则，它是可见性与有序性的一套规则总结
+Java 内存模型具备一些先天的“有序性”，即不需要通过任何同步手段（volatile、synchronized 等）就能够得到保证的安全，这个通常也称为 happens-before 原则。
 
-不符合 happens-before 规则，JMM 并不能保证一个线程的可见性和有序性
+不符合 happens-before 规则的操作可能发生重排序或者不可见的情况
 
 1. 程序次序规则 (Program Order Rule)：一个线程内，逻辑上书写在前面的操作先行发生于书写在后面的操作 ，因为多个操作之间有先后依赖关系，则不允许对这些操作进行重排序
 
 2. 锁定规则 (Monitor Lock Rule)：一个 unlock 操作先行发生于后面（时间的先后）对同一个锁的 lock 操作，所以线程解锁 m 之前对变量的写（解锁前会刷新到主内存中），对于接下来对 m 加锁的其它线程对该变量的读可见
 
-3. **volatile 变量规则**  (Volatile Variable Rule)：对 volatile 变量的写操作先行发生于后面对这个变量的读
+3. **volatile 变量规则**  (Volatile Variable Rule)：对 volatile 变量的写操作先行发生于后面对这个变量的读（例如new Object()保证对象初始化在引用赋值前发生）
 
 4. 传递规则 (Transitivity)：具有传递性，如果操作 A 先行发生于操作 B，而操作 B 又先行发生于操作 C，则可以得出操作 A 先行发生于操作 C
 
@@ -3234,7 +3220,8 @@ Cell 为累加单元：数组访问索引是通过 Thread 里的 threadLocalRand
 
 ```java
 // Striped64.Cell
-@sun.misc.Contended static final class Cell {
+@sun.misc.Contended 
+static final class Cell {
     volatile long value;
     Cell(long x) { value = x; }
     // 用 cas 方式进行累加, prev 表示旧值, next 表示新值

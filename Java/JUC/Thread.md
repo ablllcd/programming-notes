@@ -44,7 +44,7 @@ JAVA进程要等待所有线程结束才结束，而不需要等待守护线程�
 ## 线程创建
 
 ### 继承Thread类
-为了创建线程，我们可以创建一个类来基础java.lang.Thread类，并重写run()方法来指定线程要执行的任务。
+为了创建线程，我们可以创建一个类来继承java.lang.Thread类，并重写run()方法来指定线程要执行的任务。
 
 ````
 public class PrintThread extends Thread{
