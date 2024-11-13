@@ -1,5 +1,3 @@
-# MySQL related Command
-
 ## 以管理员方式打开命令行
 1. 可以直接搜索命令行，然后右击：以命令行方式打开
 2. win+R后按ctrl+shift+enter来打开
@@ -37,6 +35,14 @@
 
 ## 退出mySQL
 输入`exit`即可。
+
+## 导入SQL文件
+
+```
+mysql> create database abc;      # 创建数据库
+mysql> use abc;                  # 使用已创建的数据库 
+mysql> source /home/abc/abc.sql  # 导入备份数据库
+```
 
 ## Database level command
 （懒得切换中英文，所有下边一般就用英文了，全大写的名称一般都是要替换为对应的变量名） 
@@ -173,6 +179,16 @@ having avg (balance) > 1200
 检查端口号
 ```
 show global variables like 'port';
+```
+
+## 常见问题
+
+### 数据库中的中文记录在命令行中显示乱码
+
+解决方法：登录时设置默认字符集即可
+
+```
+mysql -u root -p --default-character-set=utf8
 ```
 
 # MySQL高级篇

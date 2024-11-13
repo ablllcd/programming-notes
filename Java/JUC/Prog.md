@@ -8069,7 +8069,7 @@ class MyLock implements Lock {
 
 
 
-### Re-Lock
+### ReentrantLock
 
 #### 锁对比
 
