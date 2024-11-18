@@ -29,6 +29,19 @@ while(map.size()>k){
 }
 ```
 
+## 数组
+
+### 二分查找
+
+情节：在数组中搜索目标
+
+前提：数组需要是有序的
+
+思路：每次取数组中间值和目标值比较，然后判断搜索左半边还是右半边。
+
+例题： https://leetcode.cn/problems/binary-search/
+
+
 ## Hash table 哈希表
 
 哈希表用于快速查找，在JAVA中，可以用hashSet和hashMap来直接作为哈希表。
