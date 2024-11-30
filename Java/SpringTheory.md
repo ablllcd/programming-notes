@@ -1157,7 +1157,7 @@ ProxyFactory有setProxyTargetClass方法来设置代理类型，默认值为fals
 2. ProxyTargetClass为false，没有设置接口，使用CGLIB代理
 3. ProxyTargetClass为true，使用CGLIB代理
 
-### 切点匹配
+### 切点匹配逻辑
 
 ```java
 import org.springframework.aop.aspectj.AspectJExpressionPointcut;
@@ -1320,7 +1320,7 @@ class Config{
 ### 代理创建时机
 
 ```java
-import jakarta.annotation.PostConstruct;
+import javax.annotation.PostConstruct;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator;
