@@ -259,7 +259,7 @@ git merge <branchname>
 git push <remote> <branch>
 
 // 删除远程仓库中的分支
-git push <remote> --delete <branch>
+git push <remote> --delete <brnahc>
 ```
 
 ### 跟踪分支

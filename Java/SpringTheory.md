@@ -1,6 +1,6 @@
 ## 大概思路
 
-1. 例如Spring通过new AnnotationConfigApplicationContext(Config.class)作为IOC容器。那么所有的起点就是ApplicationContext的构造方法。
+例如Spring通过new AnnotationConfigApplicationContext(Config.class)作为IOC容器。那么所有的起点就是ApplicationContext的构造方法。
 
 ### 构造方法
 
