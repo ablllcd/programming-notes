@@ -1460,5 +1460,444 @@ class MyAspect{
 
 上述是@Before注解的切面解析为Advisor的大体思路，注解足够多，不再赘述
 
+### 统一转为环绕通知
 
+至此我们已经知道proxyFactory可以接收target和advisor来创建代理对象，而且AnnotationAwareAspectJAutoProxyCreator后处理器可以将@Aspect注解的切面类转换为多个advisor。
+
+不过需要注意的是，@Before, @Around注解的方法转换成的通知（Advice）类型是不同的，例如AspectJMethodBeforeAdvice，AspectJAroundAdvice。其中实现了MethodInterceptor接口的通知为环绕通知。
+
+proxyFactory为了方便创建代理，会将不同类型的通知统一为环绕通知。
+
+```java
+import org.aspectj.lang.annotation.AfterReturning;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.aop.Advisor;
+import org.springframework.aop.aspectj.*;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.support.DefaultPointcutAdvisor;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+public class A18 {
+    public static void main(String[] args) throws NoSuchMethodException {
+        ArrayList<Advisor> advisors = new ArrayList<>();
+
+        SingletonAspectInstanceFactory factory =
+                new SingletonAspectInstanceFactory(new MyInnerAspect());
+        // 1. 根据Aspect切面类创建Advisor，并添加到advisors中
+        if(MyInnerAspect.class.isAnnotationPresent(Aspect.class)){
+            for (Method method : MyInnerAspect.class.getDeclaredMethods()) {
+                if(method.isAnnotationPresent(Before.class)){
+                    String expression = method.getAnnotation(Before.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    AspectJMethodBeforeAdvice advice = new AspectJMethodBeforeAdvice(method, pointcut, factory);
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    advisors.add(advisor);
+                } else if(method.isAnnotationPresent(Around.class)){
+                    String expression = method.getAnnotation(Around.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    AspectJAroundAdvice advice = new AspectJAroundAdvice(method, pointcut, factory);
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    advisors.add(advisor);
+                } else if(method.isAnnotationPresent(AfterReturning.class)){
+                    String expression = method.getAnnotation(AfterReturning.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    AspectJAfterReturningAdvice advice = new AspectJAfterReturningAdvice(method, pointcut, factory);
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    advisors.add(advisor);
+                }
+            }
+        }
+
+        // 2. 查看提取到的advisors类型
+        for (Advisor advisor : advisors) {
+            System.out.println(advisor);
+        }
+
+        // 3. 用proxyFactory创建代理对象
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.setTarget(new Target());
+        proxyFactory.addAdvisors(advisors);
+
+        // 4. 查看代理对象的foo方法绑定的advisors
+        List<Object> interceptors = proxyFactory.getInterceptorsAndDynamicInterceptionAdvice(Target.class.getMethod("foo"), Target.class);
+        System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>");
+        for (Object interceptor : interceptors) {
+            System.out.println(interceptor);
+        }
+    }
+
+    @Aspect
+    static class MyInnerAspect {
+        @Before("execution(* foo())")
+        public void before(){
+            System.out.println("Before Aspect");
+        }
+
+        @AfterReturning("execution(* foo())")
+        public void afterReturning(){
+            System.out.println("AfterReturning Aspect");
+        }
+
+        @Around("execution(* foo())")
+        public void around(){
+            System.out.println("Around Aspect");
+        }
+    }
+
+    static class Target{
+        public void foo(){
+            System.out.println("Target foo method");
+        }
+    }
+}
+```
+
+### 适配器模式
+
+上述将@Before解析出来的AspectJMethodBeforeAdvice 转换为 MethodBeforeAdviceInterceptor的思想被成为适配器模式。
+
+适配器模式指的是将一套接口转为另一套接口，从而去完成另一系列任务。（就是一个很简单的思想啦）
+
+
+### 调用链执行
+
+proxyFactory只需设置target对象和advisors切面即可，但是在proxyFactory内部是由MethodInvocation调用链对象来实际完成代理工作的。
+
+上边我们知道proxyFactory内部会将advisors都转为环绕通知类型，这是因为MethodInvocation需要target对象和环绕通知数组作为参数，来实现代理功能。
+
+示例如下：
+
+```java
+import org.aopalliance.intercept.MethodInvocation;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.AfterReturning;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.aop.Advisor;
+import org.springframework.aop.aspectj.*;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.framework.ReflectiveMethodInvocation;
+import org.springframework.aop.interceptor.ExposeInvocationInterceptor;
+import org.springframework.aop.support.DefaultPointcutAdvisor;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+public class A18 {
+    public static void main(String[] args) throws Throwable {
+        ArrayList<Advisor> advisors = new ArrayList<>();
+
+        SingletonAspectInstanceFactory factory =
+                new SingletonAspectInstanceFactory(new MyInnerAspect());
+        // 1. 根据Aspect切面类创建Advisor，并添加到advisors中
+        if(MyInnerAspect.class.isAnnotationPresent(Aspect.class)){
+            for (Method method : MyInnerAspect.class.getDeclaredMethods()) {
+                if(method.isAnnotationPresent(Before.class)){
+                    String expression = method.getAnnotation(Before.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    AspectJMethodBeforeAdvice advice = new AspectJMethodBeforeAdvice(method, pointcut, factory);
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    advisors.add(advisor);
+                } else if(method.isAnnotationPresent(Around.class)){
+                    String expression = method.getAnnotation(Around.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    AspectJAroundAdvice advice = new AspectJAroundAdvice(method, pointcut, factory);
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    advisors.add(advisor);
+                } else if(method.isAnnotationPresent(AfterReturning.class)){
+                    String expression = method.getAnnotation(AfterReturning.class).value();
+                    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+                    pointcut.setExpression(expression);
+
+                    AspectJAfterReturningAdvice advice = new AspectJAfterReturningAdvice(method, pointcut, factory);
+                    DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(pointcut, advice);
+                    advisors.add(advisor);
+                }
+            }
+        }
+
+        // 2. 查看提取到的advisors类型
+        for (Advisor advisor : advisors) {
+            System.out.println(advisor);
+        }
+
+        // 3. 用proxyFactory创建代理对象
+        Target target = new Target();
+
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.setTarget(target);
+        proxyFactory.addAdvice(ExposeInvocationInterceptor.INSTANCE);
+        proxyFactory.addAdvisors(advisors);
+
+        // 4. 查看代理对象的foo方法绑定的advisors
+        List<Object> interceptors = proxyFactory.getInterceptorsAndDynamicInterceptionAdvice(Target.class.getMethod("foo"), Target.class);
+        System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>");
+        for (Object interceptor : interceptors) {
+            System.out.println(interceptor);
+        }
+
+        // 5. 创建调用链对象并进行调用
+        System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>");
+        Constructor<ReflectiveMethodInvocation> declaredConstructor = ReflectiveMethodInvocation.class.getDeclaredConstructor(
+                Object.class, Object.class, Method.class, Object[].class, Class.class, List.class
+        );
+        declaredConstructor.setAccessible(true);
+        // 调用链初始化参数：代理对象，目标对象，目标方法，目标方法的参数数组，目标对象的class，目标方法上的环绕通知
+        ReflectiveMethodInvocation methodInvocation = declaredConstructor.newInstance(
+                null, target, Target.class.getMethod("foo"), new Object[0], Target.class, interceptors
+        );
+        methodInvocation.proceed();
+        System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>");
+    }
+
+    @Aspect
+    static class MyInnerAspect {
+        @Before("execution(* foo())")
+        public void before(){
+            System.out.println("Before Aspect");
+        }
+
+        @AfterReturning("execution(* foo())")
+        public void afterReturning(){
+            System.out.println("AfterReturning Aspect");
+        }
+
+        @Around("execution(* foo())")
+        public Object around(ProceedingJoinPoint pjp) throws Throwable {
+            System.out.println("Around Aspect before");
+            Object result = pjp.proceed();
+            System.out.println("Around Aspect after");
+            return result;
+        }
+    }
+
+    static class Target{
+        public void foo(){
+            System.out.println("Target foo method");
+        }
+    }
+}
+```
+
+需要注意的是，proxyFactory.addAdvice(ExposeInvocationInterceptor.INSTANCE)这里添加了一个切面，该切面负责将MethodInvocation对象添加到ThreadLocal里。这是因为环绕通知的调用可能需要MethodInvocation的信息。
+
+这里我们手动添加了ExposeInvocationInterceptor，但实际上AnnotationAwareAspectJAutoProxyCreator后处理器通过findEligibleAdvisors查找切面时，会将ExposeInvocationInterceptor也添加进去。详情回顾上述的A17。
+
+
+### 模拟调用链
+
+```java
+import org.aopalliance.intercept.MethodInterceptor;
+import org.aopalliance.intercept.MethodInvocation;
+
+import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Method;
+import java.util.List;
+
+public class MethodInvocationSimulation {
+    static class Target{
+        public void foo(){
+            System.out.println("foo");
+        }
+    }
+
+    static class Advice1 implements MethodInterceptor {
+        @Override
+        public Object invoke(MethodInvocation invocation) throws Throwable {
+            System.out.println("Advice1 before");
+            Object result = invocation.proceed();
+            System.out.println("Advice1 after");
+            return result;
+        }
+    }
+
+    static class Advice2 implements MethodInterceptor {
+        @Override
+        public Object invoke(MethodInvocation invocation) throws Throwable {
+            System.out.println("Advice2 before");
+            Object result = invocation.proceed();
+            System.out.println("Advice2 after");
+            return result;
+        }
+    }
+
+    static class MyMethodInvocation implements MethodInvocation{
+        private Object target;      // 需要代理的目标对象
+        private Method method;      // 目标对象的目标方法
+        private Object[] args;      // 目标方法的参数
+        private List<MethodInterceptor> interceptorList;    // 通知数组
+
+        private int count = 1;      // proceed被调用的次数（递归结束条件）
+
+        public MyMethodInvocation(Object target, Method method, Object[] args, List<MethodInterceptor> interceptorList) {
+            this.target = target;
+            this.method = method;
+            this.args = args;
+            this.interceptorList = interceptorList;
+        }
+
+        @Override
+        public Method getMethod() {
+            return method;
+        }
+
+        @Override
+        public Object[] getArguments() {
+            return args;
+        }
+
+        @Override
+        // 职责：递归调用通知和目标对象的目标方法
+        public Object proceed() throws Throwable {
+            if(count > interceptorList.size()){
+                // 调用目标方法并且结束递归
+                return method.invoke(target, args);
+            }
+            // 调用通知并且count++
+            MethodInterceptor interceptor = interceptorList.get(count++ - 1);
+            return interceptor.invoke(this);
+        }
+
+        @Override
+        public Object getThis() {
+            return this;
+        }
+
+        @Override
+        // 这个方法不知道干嘛的，但也不是我现在关注的
+        public AccessibleObject getStaticPart() {
+            return method;
+        }
+    }
+
+    public static void main(String[] args) throws Throwable {
+        Target target = new Target();
+        List<MethodInterceptor> methodInterceptors = List.of(new Advice1(), new Advice2());
+        MyMethodInvocation methodInvocation = new MyMethodInvocation(
+                target, Target.class.getMethod("foo"), new Object[0],methodInterceptors
+        );
+        methodInvocation.proceed();
+    }
+}
+```
+
+其整体思路很简单，看代码即可。该设计模式被称为责任链模式--每个通知负责一个责任，然后通过MethodInvocation串成链。
+
+
+### 动态通知
+
+动态通知指的是：通知内容是在调用时才确定的，例如动态确定参数
+
+```java
+@Before("execution(* foo(..)) && args(num)")
+public void before2(int num){
+    System.out.println("Before 2 with arg: "+num);
+}
+```
+
+动态通知并不是直接转成环绕通知，而是InterceptorAndDynamicMethodMatcher，其内部包含MethodIntercept（环绕通知）和MethodMatcher（切点）。因为通知中的num参数需要依赖切点进行传递。
+
+```java
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.aop.Advisor;
+import org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.framework.ReflectiveMethodInvocation;
+import org.springframework.aop.framework.autoproxy.AbstractAdvisorAutoProxyCreator;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ConfigurationClassPostProcessor;
+import org.springframework.context.support.GenericApplicationContext;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.List;
+
+public class A19 {
+    @Aspect
+    static class MyAspect{
+        @Before("execution(* foo(..))")
+        public void before1(){
+            System.out.println("Before 1");
+        }
+
+        @Before("execution(* foo(..)) && args(num)")
+        public void before2(int num){
+            System.out.println("Before 2 with arg: "+num);
+        }
+    }
+
+    static class Target{
+        public void foo(int num){
+            System.out.println("Target foo(num)");
+        }
+    }
+
+    static class Config{
+        @Bean
+        public AnnotationAwareAspectJAutoProxyCreator autoProxyCreator(){
+            return new AnnotationAwareAspectJAutoProxyCreator();
+        }
+
+        @Bean
+        public MyAspect myAspect(){
+            return new MyAspect();
+        }
+    }
+
+    public static void main(String[] args) throws Throwable {
+        GenericApplicationContext applicationContext = new GenericApplicationContext();
+        applicationContext.registerBean(Config.class);
+        applicationContext.registerBean(ConfigurationClassPostProcessor.class);
+        applicationContext.refresh();
+
+        // 调用findEligibleAdvisors获取IOC容器中对Target生效的advisor
+        Method findEligibleAdvisors = AbstractAdvisorAutoProxyCreator.class.getDeclaredMethod("findEligibleAdvisors", Class.class, String.class);
+        findEligibleAdvisors.setAccessible(true);
+        AnnotationAwareAspectJAutoProxyCreator creator = applicationContext.getBean(AnnotationAwareAspectJAutoProxyCreator.class);
+        List<Advisor> advisors = (List<Advisor>) findEligibleAdvisors.invoke(creator, Target.class, "target");
+
+        // 通过proxyFactory创建代理对象 （AnnotationAwareAspectJAutoProxyCreator底层就是调用proxyFactory进行代理的）
+        Target target = new Target();
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.setTarget(target);
+        proxyFactory.addAdvisors(advisors);
+        Object proxy = proxyFactory.getProxy();
+
+        // 查看proxyFactory如何处理动态通知，是否也是转为环绕通知
+        List<Object> intercepters = proxyFactory.
+                getInterceptorsAndDynamicInterceptionAdvice(Target.class.getDeclaredMethod("foo", int.class), Target.class);
+        for(Object intercepter : intercepters){
+            System.out.println(intercepter);
+        }
+
+        System.out.println(">>>>>>>>>>>>>>>>>");
+        // 创建ReflectiveMethodInvocation子类的实例（为了访问protected的构造方法）
+        ReflectiveMethodInvocation methodInvocation = new ReflectiveMethodInvocation(
+            proxy, target, Target.class.getDeclaredMethod("foo", int.class), new Object[]{100}, Target.class, intercepters
+        ) {};
+        methodInvocation.proceed();
+    }
+}
+```
+
+其中需要注意的是，当有动态通知时，MethodInvocation创建时需要将代理对象也进行传递，而静态通知可以传递null。
 
