@@ -2237,3 +2237,394 @@ String contentAsString = response.getContentAsString(StandardCharsets.UTF_8);
 System.out.println(contentAsString);
 ```
 
+### 类型转换器和数据绑定器
+
+在Spring创建bean时，需要为bean属性赋值，而且还需要进行类型转换。所以Spring内部有专门的组件负责这部分工作，其结构如下：
+
+![alt text](pic/TypeConverterStructure.png)
+
+它们都实现了TypeConverter这个高层转换接口,在转换时,会用到TypeConverterDelegate 委派ConversionService与PropertyEditorRegistry 真正执行转换(Facade门面模式)。
+
+1. 首先看是否有自定义转换器,@InitBinder添加的即属于这种
+2. 再看有没有ConversionService转换
+3. 再利用默认的PropertyEditor转换
+4. 最后有一些特殊处理
+
+上层组件的功能也有所不同：
+
+* SimpleTypeConverter 仅做类型转换
+* BeanWrapperlmpl为bean的属性赋值,当需要时做类型转换,走Property
+* DirectFieldAccessor 为bean的属性赋值,当需要时做类型转换,走Field
+* ServletRequestDataBinder为bean的属性执行绑定,当需要时做类型转换,根据directFieldAccess选择走Property还是Field,具备校验与获取校验结果功能
+
+**底层ConversionService**
+
+![alt text](pic/TypeConverterStructure-2.png)
+
+* Printer 把其它类型转为String
+* Parser 把String 转为其它类型
+* Formatter综合 Printer与Parser功能
+* Converter 把类型S转为类型T
+* Printer、Parser、Converter 经过适配转换成 GenericConverter放入Converters集合
+* FormattingConversionService 利用其它们实现转换
+
+**底层PropertyEditorRegistry**
+
+![alt text](pic/TypeConverterStructure-3.png)
+
+* PropertyEditor 把String与其它类型相互转换
+* PropertyEditorRegistry可以注册多个PropertyEditor对象
+* 与第一套接口直接可以通过 FormatterPropertyEditorAdapter 来进行适配
+
+**SimpleTypeConverter**
+```java
+public class TestSimpleConverter {
+    public static void main(String[] args) {
+        SimpleTypeConverter converter = new SimpleTypeConverter();
+        Integer i = converter.convertIfNecessary("13", int.class);
+        System.out.println(i);
+        Date date = converter.convertIfNecessary("1999/01/01", Date.class);
+        System.out.println(date);
+    }
+}
+```
+
+**BeanWrapper**
+
+```java
+public class TestBeanWrapper {
+    public static void main(String[] args) {
+        User target = new User();
+        // 利用反射通过property进行赋值
+        BeanWrapper beanWrapper = new BeanWrapperImpl(target);
+        beanWrapper.setPropertyValue("birthday", "1999/01/01");
+        beanWrapper.setPropertyValue("name", "cain");
+        beanWrapper.setPropertyValue("age", "18");
+        System.out.println(target);
+    }
+
+    static class User{
+        String name;
+        int age;
+        Date birthday;
+
+        public String getName() {return name;}
+        public void setName(String name) {this.name = name;}
+
+        public int getAge() {return age;}
+        public void setAge(int age) {this.age = age;}
+
+        public Date getBirthday() {return birthday;}
+        public void setBirthday(Date birthday) {this.birthday = birthday;}
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "name='" + name + '\'' +
+                    ", age=" + age +
+                    ", birthday=" + birthday +
+                    '}';
+        }
+    }
+}
+```
+
+**FieldAccessor**
+```java
+public class TestFieldAccessor {
+    public static void main(String[] args) {
+        User target = new User();
+        // 利用反射通过property进行赋值
+        DirectFieldAccessor directFieldAccessor = new DirectFieldAccessor(target);
+        directFieldAccessor.setPropertyValue("birthday", "1999/01/01");
+        directFieldAccessor.setPropertyValue("name", "cain");
+        directFieldAccessor.setPropertyValue("age", "18");
+        System.out.println(target);
+    }
+
+    static class User{
+        String name;
+        int age;
+        Date birthday;
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "name='" + name + '\'' +
+                    ", age=" + age +
+                    ", birthday=" + birthday +
+                    '}';
+        }
+    }
+}
+```
+
+**DataBinder**
+
+```java
+public class TestServletDataBinder {
+    public static void main(String[] args) {
+        User user = new User();
+        // web环境下的数据绑定
+        ServletRequestDataBinder servletRequestDataBinder = new ServletRequestDataBinder(user); //dataBinder的子类
+        servletRequestDataBinder.initDirectFieldAccess(); // 设置用field进行赋值而不是property
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addParameter("name", "cain");
+        request.addParameter("age", "18");
+        request.addParameter("birthday", "1999/01/01");
+        servletRequestDataBinder.bind(request);
+
+        System.out.println(user);
+    }
+
+    static class User{
+        String name;
+        int age;
+        Date birthday;
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "name='" + name + '\'' +
+                    ", age=" + age +
+                    ", birthday=" + birthday +
+                    '}';
+        }
+    }
+}
+```
+
+### 添加自定义类型转换器
+```java
+import org.springframework.core.convert.ConversionService;
+import org.springframework.format.support.FormattingConversionService;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.bind.ServletRequestDataBinder;
+import org.springframework.web.bind.ServletRequestParameterPropertyValues;
+import org.springframework.web.bind.WebDataBinder;
+import org.springframework.web.bind.annotation.InitBinder;
+import org.springframework.web.bind.support.ConfigurableWebBindingInitializer;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.support.InvocableHandlerMethod;
+import org.springframework.web.servlet.mvc.method.annotation.ServletRequestDataBinderFactory;
+
+import java.util.Date;
+import java.util.List;
+
+public class TestDataBinderFactory {
+    public static void main(String[] args) throws Exception {
+        User user = new User();
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addParameter("name", "cain");
+        request.addParameter("age", "18");
+        // 创建一种自定义的日期格式，需要自定义MyDataFormatter来转换
+        request.addParameter("birthday", "1999|01|01");
+
+        // 1. 通过工厂方法获取databinder来进行转换
+//        ServletRequestDataBinderFactory binderFactory = new ServletRequestDataBinderFactory(null, null);
+//        WebDataBinder binder = binderFactory.createBinder(new ServletWebRequest(request), user, "user");
+
+        // 2. 工厂 + @initBinder
+//        // 将@InitBinder注解的方法转换为回调方法并放入binderFactory中
+//        InvocableHandlerMethod handlerMethod = new InvocableHandlerMethod(new MyController(), MyController.class.getDeclaredMethod("foo", WebDataBinder.class));
+//        ServletRequestDataBinderFactory binderFactory = new ServletRequestDataBinderFactory(List.of(handlerMethod), null);
+//        // binderFactory创建databinder时就会调用回调方法，从而添加MyDateFormatter
+//        WebDataBinder binder = binderFactory.createBinder(new ServletWebRequest(request), user, "user");
+
+        // 3. 工厂 + FormattingConversionService
+        // 创建FormattingConversionService并添加MyDateFormatter
+        FormattingConversionService service = new FormattingConversionService();
+        service.addFormatter(new MyDateFormatter());
+        // 封装MyDateFormatter为initializer
+        ConfigurableWebBindingInitializer initializer = new ConfigurableWebBindingInitializer();
+        initializer.setConversionService(service);
+        // 为factory设置initializer
+        ServletRequestDataBinderFactory binderFactory = new ServletRequestDataBinderFactory(null, initializer);
+        WebDataBinder binder = binderFactory.createBinder(new ServletWebRequest(request), user, "user");
+
+        // 进行数据绑定并测试结果
+        binder.bind(new ServletRequestParameterPropertyValues(request));
+        System.out.println(user);
+    }
+
+    static class MyController{
+        @InitBinder
+        public void foo(WebDataBinder binder){
+            // 添加MyDataFormatter到databinder中
+            binder.addCustomFormatter(new MyDateFormatter());
+        }
+    }
+
+    static class User{
+        String name;
+        int age;
+        Date birthday;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public int getAge() {
+            return age;
+        }
+
+        public void setAge(int age) {
+            this.age = age;
+        }
+
+        public Date getBirthday() {
+            return birthday;
+        }
+
+        public void setBirthday(Date birthday) {
+            this.birthday = birthday;
+        }
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "name='" + name + '\'' +
+                    ", age=" + age +
+                    ", birthday=" + birthday +
+                    '}';
+        }
+    }
+}
+```
+
+### 拓展： @InitBinder来源
+
+上述添加自定义转换器时，通过@InitBinder可以创建回调方法，然后将转换器添加到dataBinder中。那么@InitBinder注释的方法什么时候被解析呢？
+
+1. @ControllerAdvice中的@InitBinder方法： 在RequestMappingHandlerAdapter初始化时解析，因为ControllerAdvice是全局配置
+2. @Controller中的@InitBinder方法： 在RequestMappingHandlerAdapter首次执行该Controller中方法时进行解析。
+
+解析后得到的方法也就存储在RequestMappingHandlerAdapter中。
+
+### 控制器执行流程
+
+Handler方法内部结构如下：
+
+![alt text](pic/controller-process-1.png)
+
+HandlerMethod（控制器方法） 需要
+
+* bean即是哪个 Controller
+* method 即是Controller中的哪个方法
+
+ServletlnvocableHandlerMethod 需要
+
+* WebDataBinderFactory负责对象绑定、类型转换
+* ParameterNameDiscoverer负责参数名解析
+* HandlerMethodArgumentResolverComposite负责解析参数
+* HandlerMethodReturnValueHandlerComposite负责处理返回值
+
+handlerAdapter具体执行流程如下：
+
+![alt text](pic/controller-process-2.png)
+
+![alt text](pic/controller-process-3.png)
+
+下边是一个使用handlerMethod的示例
+
+```java
+public class A26 {
+    public static void main(String[] args) throws Exception {
+        AnnotationConfigServletWebApplicationContext applicationContext =
+                new AnnotationConfigServletWebApplicationContext(WebConfig.class);
+
+        // 创建handlerMethod
+        ServletInvocableHandlerMethod handlerMethod = new ServletInvocableHandlerMethod(new WebConfig.Controller1(),
+                WebConfig.Controller1.class.getDeclaredMethod("foo", WebConfig.User.class));
+
+        // 根据handlerMethod的结构图，为其添加：参数解析器，参数名解析器，类型转换器
+        // 这里我们手动为handlerMethod进行添加，实际上应该是handlerAdapter为其进行赋值
+        handlerMethod.setHandlerMethodArgumentResolvers(getArgumentResolvers(applicationContext));
+        handlerMethod.setDataBinderFactory(new ServletRequestDataBinderFactory(null,null));
+        handlerMethod.setParameterNameDiscoverer(new DefaultParameterNameDiscoverer());
+
+        // 构建request和ModelAndView容器，作为invoke的参数
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addParameter("name", "张三");
+        ModelAndViewContainer modelAndViewContainer = new ModelAndViewContainer();
+
+        handlerMethod.invokeAndHandle(new ServletWebRequest(request),modelAndViewContainer);
+        // 测试modelAndViewContainer是否存储了中间的model信息
+        System.out.println(modelAndViewContainer.getModel());
+    }
+
+    // 将handlerAdapter中的默认参数解析器进行手动创建
+    public static HandlerMethodArgumentResolverComposite getArgumentResolvers(AnnotationConfigServletWebApplicationContext context) {
+        HandlerMethodArgumentResolverComposite composite = new HandlerMethodArgumentResolverComposite();
+        composite.addResolvers(
+            new RequestParamMethodArgumentResolver(context.getDefaultListableBeanFactory(),false),
+            new PathVariableMethodArgumentResolver(),
+            new RequestHeaderMethodArgumentResolver(context.getDefaultListableBeanFactory()),
+            new ServletCookieValueMethodArgumentResolver(context.getDefaultListableBeanFactory()),
+            new ExpressionValueMethodArgumentResolver(context.getDefaultListableBeanFactory()),
+            new ServletRequestMethodArgumentResolver(),
+            new ServletModelAttributeMethodProcessor( false),
+            new RequestResponseBodyMethodProcessor(List.of(new MappingJackson2HttpMessageConverter())),
+            new ServletModelAttributeMethodProcessor( true),
+            new RequestParamMethodArgumentResolver(context.getDefaultListableBeanFactory(),true)
+        );
+        return composite;
+    }
+}
+```
+
+```java
+@Configuration
+public class WebConfig {
+    @Controller
+    public static class Controller1 {
+        @ResponseStatus(HttpStatus.OK)  // 为了避免返回值处理器
+        public void foo(@ModelAttribute User user) {
+            System.out.println("controller 1 foo method is called, user name = " + user.getName());
+        }
+    }
+
+    static class User{
+        String name;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "name='" + name + '\'' +
+                    '}';
+        }
+    }
+}
+```
+
+### 拓展：@ModelAttribute构造Model
+
+上述内容中我们已经知道@ModelAttribute可以用于参数，然后参数解析器会对该参数进行处理，参数也会放入到ModelAndView容器中。
+
+但其实@ModelAttribute也可以放在方法上，方法的返回值也会当作model存储进ModelAndView容器。
+
+```java
+@ModelAttribute
+public String aa(){
+    return "aa";
+}
+```
+
+1. 当该方法位于@ControllerAdvice中：在全局添加model
+2. 当该方法位于@Controller中：在这次handler执行中添加model
+
+

@@ -11,6 +11,10 @@
 * 切换某行位置：shift + alt + 上下键
 * 删除一行：ctrl + Y
 
+### 查看
+
+* 查看类的继承图：ctrl + alt + U
+
 ## 配置Maven
 
 在创建完spring项目后，如果无法启动项目，可能是maven依赖没有下载成功，可在`build`中查看。
