@@ -2627,4 +2627,523 @@ public String aa(){
 1. 当该方法位于@ControllerAdvice中：在全局添加model
 2. 当该方法位于@Controller中：在这次handler执行中添加model
 
+### 返回值处理器
 
+在HandlerAdapter中有一组返回值处理器来处理返回值，其基本逻辑为：1.判断返回值类型是否是自己能处理的 2.对支持的返回值类型进行处理。返回值被处理后有两种情况：1.被转换为ModelAndView对象，用于下一步的视图渲染。2.直接写入http response，无需视图渲染。
+
+视图渲染其实就是处理带这种#{variable}的html文件，将其转为真正的html文件。返回值处理后得到的modlerAndView放入modelAndViewContainer中，view用来查找视图文件（通常view名称和视图文件名相同），而model则用来填充该视图文件中的#{variable}数据。
+
+返回值类型对应的处理方法：
+
+* ModelAndView: 直接添加到modelAndViewContainer中
+* 自定义对象： 返回的对象当作model添加到modelAndViewContainer中，以请求路径作为默认view名称
+* String: 返回值作为view名称添加到modelAndViewContainer
+
+剩余的返回值类型不走视图解析，它们对应的返回值处理器会调用modelAndViewContainer.setRequestHandled(true)，表示不进行视图解析。此外，它们还会调用messageConverter将返回值进行转换（通常是转换为json格式），然后直接写入到响应头/响应体中。
+
+返回值类型对应的处理方法：
+
+* HttpEntity: 返回值进行消息转换并写入响应体
+* HttpHeader: 返回值作为响应头
+* @ResponseBody+自定义对象：返回的自定义对象进行消息转换后，写入到响应体
+
+
+### 拓展： ControllerAdvice中的ResponseBodyAdvice
+
+在前后端分离的场景下，我们经常使用@ResponseBody注解来进行返回值处理。不过我们会遇到的一种情况就是我们希望返回某个对象的json数据
+
+```java
+@ResponseBody
+User xxxMethod(){
+    ...
+}
+```
+
+但实际为了保证数据统一，我们需要返回{code:xxx; msg:xxx; Object:xxx}这种格式的Result类型
+
+```java
+@ResponseBody
+Result xxxMethod(){
+    ...
+}
+```
+
+这种类型转换我们可以从Controller中的方法提取到ControllerAdvice中，并且在ControllerAdvice中做统一的类型转换。为此需要ControllerAdvice实现ResponseBodyAdvice接口
+
+```java
+public interface ResponseBodyAdvice<T> {
+    // 该方法用来判断是否需要对ResponseBody进行处理，返回true则是处理
+    boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType);
+
+    // 该方法用来对ResponseBody进行处理
+    T beforeBodyWrite(@Nullable T body, MethodParameter returnType, MediaType selectedContentType, Class<? extends HttpMessageConverter<?>> selectedConverterType, ServerHttpRequest request, ServerHttpResponse response);
+}
+```
+
+### 异常处理
+
+回顾DispatcherServelt的初始化流程:
+
+```java
+protected void initStrategies(ApplicationContext context) {
+    this.initMultipartResolver(context);
+    this.initLocaleResolver(context);
+    this.initThemeResolver(context);
+    // 配置handlerMapping
+    this.initHandlerMappings(context);
+    // 配置handlerAdapter
+    this.initHandlerAdapters(context);
+    // 配置handler的异常处理器
+    this.initHandlerExceptionResolvers(context);
+    this.initRequestToViewNameTranslator(context);
+    this.initViewResolvers(context);
+    this.initFlashMapManager(context);
+}
+```
+
+其中配置了handlerExceptionResolvers来进行异常处理。当异常发生时，会从异常处理器列表中查找合适的异常处理器来进行处理，这里我们讲解ExceptionHandlerExceptionResolver作为例子：
+
+```java
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver;
+import javax.servlet.ServletRequest;
+import java.io.UnsupportedEncodingException;
+import java.util.List;
+import java.util.Map;
+
+public class A30 {
+    public static void main(String[] args) throws NoSuchMethodException, UnsupportedEncodingException {
+        // 职责：当发生异常时，查找该controller中被@ExceptionHandler注解的方法，将其作为异常处理流程（类似于handlerAdapter的处理流程）
+        ExceptionHandlerExceptionResolver exceptionResolver = new ExceptionHandlerExceptionResolver();
+        // 配置消息转换器
+        exceptionResolver.setMessageConverters(List.of(new MappingJackson2HttpMessageConverter()));
+        // 配置参数处理器和返回值处理器
+        exceptionResolver.afterPropertiesSet();
+
+        // 测试异常处理
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        HandlerMethod handlerMethod = new HandlerMethod(new Controller1(), Controller1.class.getMethod("foo"));
+        ArithmeticException exception = new ArithmeticException("divide by zero");
+        exceptionResolver.resolveException(request,response,handlerMethod,exception);
+        // 检查异常处理结果
+        System.out.println(response.getContentAsString());
+    }
+
+    public static class Controller1{
+        public void foo() {}
+
+        @ExceptionHandler
+        @ResponseBody
+        public Map<String, Object> handleException(Exception ex, ServletRequest request){
+            System.out.println(request);
+            return Map.of("error", ex.getMessage());
+        }
+    }
+}
+```
+
+可见HandlerExceptionResolver和handlerAdapter是很类似的，因为异常处理方法也算是一个handler，需要被HandlerExceptionResolver来进行处理并返回。
+
+
+### 拓展：@ControllerAdvice中的@ExceptionHandler
+
+当Controller中没有@ExceptionHandler注解的异常处理方法，HandlerExceptionResolver会去查找@ControllerAdvice中的@ExceptionHandler注解的异常处理方法。
+
+HandlerExceptionResolver中的代码如下：
+
+```java
+public void afterPropertiesSet() {
+    // 从ControllerAdvice中查找@ExceptionHandler并存储
+    this.initExceptionHandlerAdviceCache();
+    ...
+}
+
+private void initExceptionHandlerAdviceCache() {
+    List<ControllerAdviceBean> adviceBeans = ControllerAdviceBean.findAnnotatedBeans(this.getApplicationContext());
+    Iterator var2 = adviceBeans.iterator();
+
+    // 遍历ControllerAdvice列表，添加所有的@ExceptionHandler
+    while(var2.hasNext()) {
+        ControllerAdviceBean adviceBean = (ControllerAdviceBean)var2.next();
+        Class<?> beanType = adviceBean.getBeanType();
+        if (beanType == null) {
+            throw new IllegalStateException("Unresolvable type for ControllerAdviceBean: " + adviceBean);
+        }
+
+        ExceptionHandlerMethodResolver resolver = new ExceptionHandlerMethodResolver(beanType);
+        if (resolver.hasExceptionMappings()) {
+            this.exceptionHandlerAdviceCache.put(adviceBean, resolver);
+        }
+
+        if (ResponseBodyAdvice.class.isAssignableFrom(beanType)) {
+            this.responseBodyAdvice.add(adviceBean);
+        }
+    }
+
+    ...
+}
+```
+
+### Tomcat的异常处理
+
+HandlerExceptionResolvers只能处理handler（也就是Controller）中的异常，当异常发生在filter或者其它地方时，上述的异常处理器不起作用，异常会继续抛出，由Tomcat进行处理。
+
+Tomcat有基本的错误处理机制（就是返回一个html页面显示错误信息），下边展示如何自定义Tomcat的异常处理：
+
+```java
+@Configuration
+pulic class WebConfig{
+    @Controller
+    public class Controller1 {
+        @RequestMapping("test")
+        public String test() {
+            int i = 1/0;
+            return "test";
+        }
+
+        @RequestMapping("error")
+        @ResponseBody
+        public String error(HttpServletRequest request) {
+            // Tomcat会将异常存储到request作用域
+            Throwable ex = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+            return ex.getMessage();
+        }
+    }
+
+    // 添加Tomcat的错误处理页面，当出现异常时通过“页面跳转”的方法进行跳转
+    // 错误处理页面中设置的路径对应Controller中的方法，静态页面等
+    @Bean
+    public ErrorPageRegistrar errorPageRegistrar(){
+        return registry -> registry.addErrorPages(new ErrorPage("/error"));
+    }
+
+    // BeanPostProcessor用来处理上边的ErrorPageRegistrar
+    @Bean
+    public ErrorPageRegistrarBeanPostProcessor errorPageRegistrarBeanPostProcessor(){
+        return new ErrorPageRegistrarBeanPostProcessor();
+    }
+}
+
+```
+
+通过添加了ErrorPageRegistrar，我们可以自定义错误处理页面，让Tomcat进行跳转。上边我们是自己在Controller中写了方法来作为错误处理页面，实际上Tomcat提供了BasicErrorController来作为错误处理页面（默认路径为/error）。
+
+```java
+@Configuration
+pulic class WebConfig{
+    @Bean
+    public BasicErrorController basicErrorController(){
+        // 设置返回的错误信息的attribute
+        DefaultErrorAttributes errorAttributes = new DefaultErrorAttributes();
+        // 可以从application.yml中读取property并添加到返回的错误信息中
+        ErrorProperties errorProperties = new ErrorProperties();
+        errorProperties.setIncludeException(true);
+        // BasicErrorController：既可以返回html的错误信息（通过浏览器），也可以返回json（通过Postman)
+        return new BasicErrorController(errorAttributes, errorProperties);
+    }
+
+    @Bean
+    public ErrorPageRegistrar errorPageRegistrar(){
+        return registry -> registry.addErrorPages(new ErrorPage("/error"));
+    }
+
+    @Bean
+    public ErrorPageRegistrarBeanPostProcessor errorPageRegistrarBeanPostProcessor(){
+        return new ErrorPageRegistrarBeanPostProcessor();
+    }
+}
+```
+
+### 其它handlerMapping和handlerAdapter
+
+前边我们只讲了RequestMappingHandlerMapping和RequestMappingHandlerAdapter,实际上还有其它类型的handlerMapping和handlerAdapter。
+
+例如：
+
+1. BeanNameUrlHandlerMapping:根据请求路径/test去查找name也为/test的bean来作为handler.
+2. SimpleControllerHandlerAdapter：handler需要实现Controller接口，重写的方法中实现handler处理逻辑
+
+其余的暂且不管，用到再说。
+
+## SpringBoot
+
+SpringBoot的启动流程可以分为两大块：构造和运行。
+
+```java
+// 代码从这里开始
+SpringApplication.run(A39_1.class, args);
+
+// 对应执行的就是new和run
+public static ConfigurableApplicationContext run(Class<?>[] primarySources, String[] args) {
+    return (new SpringApplication(primarySources)).run(args);
+}
+```
+
+### 构造流程
+
+Spring中的构造方法为：
+
+```java
+public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
+    this.sources = new LinkedHashSet();
+    this.bannerMode = Mode.CONSOLE;
+    this.logStartupInfo = true;
+    this.addCommandLineProperties = true;
+    this.addConversionService = true;
+    this.headless = true;
+    this.registerShutdownHook = true;
+    this.additionalProfiles = Collections.emptySet();
+    this.isCustomEnvironment = false;
+    this.lazyInitialization = false;
+    this.applicationContextFactory = ApplicationContextFactory.DEFAULT;
+    this.applicationStartup = ApplicationStartup.DEFAULT;
+    this.resourceLoader = resourceLoader;
+    Assert.notNull(primarySources, "PrimarySources must not be null");
+    // 1. 设置bean Definition的来源
+    this.primarySources = new LinkedHashSet(Arrays.asList(primarySources));
+    // 2. 推断spring application的类型
+    this.webApplicationType = WebApplicationType.deduceFromClasspath();
+    this.bootstrapRegistryInitializers = this.getBootstrapRegistryInitializersFromSpringFactories();
+    // 3. 添加初始化器
+    this.setInitializers(this.getSpringFactoriesInstances(ApplicationContextInitializer.class));
+    // 4. 添加事件监听器
+    this.setListeners(this.getSpringFactoriesInstances(ApplicationListener.class));
+    // 5. 主类推断
+    this.mainApplicationClass = this.deduceMainApplicationClass();
+}
+```
+
+由于上述流程比较复杂，下边是对构造方法的5个主要步骤的模拟：
+
+```java
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.support.GenericApplicationContext;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Set;
+
+public class A39_1 {
+    public static void main(String[] args) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        // 1. （模拟）获取bean Definition源
+        SpringApplication springApplication = new SpringApplication(A39_1.class);   //主要源
+        springApplication.setSources(Set.of("classpath:b01.xml"));                  //额外添加源（xml文件）
+
+        // 2. （模拟）应用类型推断：通过有那些类来判断spring application的类型
+        Method deduceFromClasspath = WebApplicationType.class.getDeclaredMethod("deduceFromClasspath");
+        deduceFromClasspath.setAccessible(true);
+        System.out.println("应用类型： "+deduceFromClasspath.invoke(null));
+
+        // 3. （模拟）添加初始化器: 初始化器会拓展application context，例如添加bean之类的
+        springApplication.addInitializers(new ApplicationContextInitializer<ConfigurableApplicationContext>() {
+            @Override
+            public void initialize(ConfigurableApplicationContext applicationContext) {
+                if (applicationContext instanceof GenericApplicationContext gac) {
+                    gac.registerBean("bean3",Bean3.class);
+                }
+            }
+        });
+
+        // 4. （模拟）添加事件监听器
+        springApplication.addListeners(new ApplicationListener<ApplicationEvent>() {
+            @Override
+            public void onApplicationEvent(ApplicationEvent event) {
+                System.out.println("事件： "+event);
+            }
+        });
+
+        // 5. （模拟）主类推断
+        Method deduceMainApplicationClass = SpringApplication.class.getDeclaredMethod("deduceMainApplicationClass");
+        deduceMainApplicationClass.setAccessible(true);
+        System.out.println("主类："+deduceMainApplicationClass.invoke(springApplication));
+
+        // 启动spring application从而获得application context
+        ConfigurableApplicationContext applicationContext = springApplication.run(args);
+        // 打印bean和bean的来源
+        for (String name : applicationContext.getBeanDefinitionNames()) {
+            System.out.println("bean: "+name+" | source: "+applicationContext.getBeanFactory().getBeanDefinition(name).getResourceDescription());
+        }
+        applicationContext.close();
+    }
+
+    // spring application想要启动必须有一个服务器
+    @Bean
+    public TomcatServletWebServerFactory tomcatServletWebServerFactory() {
+        return new TomcatServletWebServerFactory();
+    }
+
+    @Bean
+    public Bean2 bean2(){
+        return new Bean2();
+    }
+
+    static class Bean1{ }
+    static class Bean2{ }
+    static class Bean3{ }
+}
+```
+
+### run方法的执行流程
+
+springBoot的run方法可以分为12个步骤：
+
+#### Step1:创建事件发布器
+
+```java
+// step1: 创建事件发布器
+public class A39_2 {
+    public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+        SpringApplication springApplication = new SpringApplication();
+        springApplication.addListeners(event -> System.out.println("事件："+event));   //添加事件监听器
+
+        // 从spring.factories配置文件（spring-boot包里提供的）中读取SpringApplicationRunListener的实现类
+        List<String> strings = SpringFactoriesLoader.loadFactoryNames(SpringApplicationRunListener.class, A39_2.class.getClassLoader());
+
+        for (String string : strings) {
+            // 创建事件发布器
+            System.out.println("发布器：" + string);
+            Class<?> clazz = Class.forName(string);
+            Constructor<?> constructor = clazz.getConstructor(SpringApplication.class, String[].class);
+            SpringApplicationRunListener publisher = (SpringApplicationRunListener) constructor.newInstance(springApplication, args);
+
+            // 发布事件
+            DefaultBootstrapContext bootstrapContext = new DefaultBootstrapContext();
+            GenericApplicationContext context = new GenericApplicationContext();
+            publisher.starting (bootstrapContext);  // spring boot 开始启动
+            publisher. environmentPrepared(bootstrapContext, new StandardEnvironment()); //spring boot环境准备完毕
+            publisher.contextPrepared(context);     //在 spring 容器创建,并调用初始化器之后,发送此事件
+            publisher.contextLoaded(context);       // 所有 bean definition 加载完毕
+            context.refresh() ;
+            publisher.started(context);             // spring 容器初始化完成(refresh 方法调用完毕)
+            publisher.running(context);             // spring boot 启动完成
+
+            publisher.failed(context,new Exception("出错了"));//spring boot 启动出错
+        }
+    }
+}
+```
+
+#### Step2 , 8-12: 创建application context并执行runner
+
+```java
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
+import org.springframework.boot.*;
+import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
+import org.springframework.boot.web.reactive.context.AnnotationConfigReactiveWebApplicationContext;
+import org.springframework.boot.web.reactive.context.AnnotationConfigReactiveWebServerApplicationContext;
+import org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.AnnotatedBeanDefinitionReader;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.core.io.ClassPathResource;
+
+public class A39_3 {
+    public static void main(String[] args) throws Exception {
+        SpringApplication springApplication = new SpringApplication();
+        springApplication.addInitializers(applicationContext -> System.out.println("初始化器被执行"));
+
+        // 2. 封装参数：将args进行封装，后续的runner可能会用到
+        DefaultApplicationArguments arguments = new DefaultApplicationArguments(args);
+
+        // 8. 创建容器：根据springApplication类型创建对应的applicationContext
+        GenericApplicationContext applicationContext = createApplicationContext(WebApplicationType.SERVLET);
+
+        // 9. 准备容器：执行springApplication中的初始化器
+        for (ApplicationContextInitializer initializer : springApplication.getInitializers()) {
+            initializer.initialize(applicationContext);
+        }
+
+        // 10. 加载beanDefinition: 根据springApplication中设置的源，从配置类，xml，包下进行读取
+        DefaultListableBeanFactory beanFactory = applicationContext.getDefaultListableBeanFactory();
+        AnnotatedBeanDefinitionReader reader1 = new AnnotatedBeanDefinitionReader(beanFactory);     //从配置类读取
+        XmlBeanDefinitionReader reader2 = new XmlBeanDefinitionReader(beanFactory);                 //从xml中读
+        reader1.register(Config.class);
+        reader2.loadBeanDefinitions(new ClassPathResource("b05.xml"));
+
+        // 11. refresh容器
+        applicationContext.refresh();
+
+        // 12. 执行runner: runner是实现了Runner接口的bean,这里调用它们的run方法来实现某些功能
+        for (ApplicationRunner runner : applicationContext.getBeansOfType(ApplicationRunner.class).values()) {
+            runner.run(arguments);
+        }
+        for (CommandLineRunner runner : applicationContext.getBeansOfType(CommandLineRunner.class).values()) {
+            runner.run(args);
+        }
+
+
+        // 检查applicationContext中有那些bean
+        for (String name : applicationContext.getBeanDefinitionNames()) {
+            System.out.println("bean: "+name+" | source: "+beanFactory.getBeanDefinition(name).getResourceDescription());
+        }
+        applicationContext.close();
+
+    }
+
+    public static GenericApplicationContext createApplicationContext(WebApplicationType type){
+        GenericApplicationContext context = null;
+        switch (type){
+            case SERVLET -> context = new AnnotationConfigServletWebServerApplicationContext();
+            case REACTIVE -> context = new AnnotationConfigReactiveWebServerApplicationContext();
+            case NONE -> context = new AnnotationConfigApplicationContext();
+        }
+        return context;
+    }
+
+    @Configuration
+    static class Config{
+        @Bean
+        public Bean4 bean4(){
+            return new Bean4();
+        }
+
+        @Bean
+        public ApplicationRunner applicationRunner(){
+            return new ApplicationRunner() {
+                @Override
+                public void run(ApplicationArguments args) throws Exception {
+                    System.out.println("application runner is called");
+                }
+            };
+        }
+
+        @Bean
+        public CommandLineRunner commandLineRunner(){
+            return new CommandLineRunner() {
+                @Override
+                public void run(String... args) throws Exception {
+                    System.out.println("commandline runner is called");
+                }
+            };
+        }
+
+        // spring application想要refresh必须有一个服务器
+        @Bean
+        public TomcatServletWebServerFactory tomcatServletWebServerFactory() {
+            return new TomcatServletWebServerFactory();
+        }
+    }
+    static class Bean4{}
+    static class Bean5{}
+}
+```
+
+#### 
