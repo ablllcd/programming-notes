@@ -3146,4 +3146,287 @@ public class A39_3 {
 }
 ```
 
-#### 
+#### Step3: 创建applicationEnvironment，并将命令行参数添加到环境中
+
+```java
+    public static void main(String[] args) throws IOException {
+        // 创建application environment，其中默认读取: systemEnvironment和systemProperty（例如VM option)
+        ApplicationEnvironment env = new ApplicationEnvironment(); 
+        // 将application.properties添加到环境中
+        env.getPropertySources().addLast(new ResourcePropertySource(new ClassPathResource("application.properties")));
+        // 将命令行参数添加到环境中
+        env.getPropertySources().addFirst(new SimpleCommandLinePropertySource(args));
+        for (PropertySource <?> ps : env.getPropertySources()) {
+            System.out.println(ps);
+            System.out.println(env.getProperty("JAVA_HOME"));
+            System.out.println(env.getProperty("server.port"));
+        }
+    }
+```
+
+applicationEnvironment中记录了各种配置的值，例如JAVA_HOME,端口号等。
+
+需要注意的是，上述代码没有复现，因为ApplicationEnvironment在我用的版本里是package-private的，无法创建实例。
+
+#### Step4: 统一applicationEnvironment中的变量名
+
+```java
+public static void main(String[] args) throws IOException, NoSuchFieldException {
+    ApplicationEnvironment env = new ApplicationEnvironment();
+    ConfigurationPropertySources.attach(env);
+
+    System.out.println(env.getProperty("user.first-name"));
+    System.out.println(env.getProperty("user.middle-name"));
+    System.out.println(env.getProperty("user.last-name"));
+}
+```
+
+step4在ApplicationEnvironment中添加ConfigurationPropertySources，从而保证Environment中各种格式的变量名，例如firstName,first_name等都会被转换为first-name。
+
+
+### Step5: 添加Environment相关的后处理器
+
+```java
+ConfigDataEnvironmentPostProcessor PostProcessor = new ConfigDataEnvironmentPostProcessor(new DeferredLogs(), new DefaultBootstrapContext());
+PostProcessor.postProcessEnvironment(env,application);
+```
+
+该后处理器会增强applicationEnvironment，并将application.yaml配置文件添加到environment中去。而且在Spring中，Environment相关的后处理器不止这一个，还有别的后处理器为它添加环境变量，这些后处理器都写在spring.factories中：
+
+```
+# Environment Post Processors
+org.springframework.boot.env.EnvironmentPostProcessor=\
+org.springframework.boot.cloud.CloudFoundryVcapEnvironmentPostProcessor,\
+org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor,\
+org.springframework.boot.env.RandomValuePropertySourceEnvironmentPostProcessor,\
+org.springframework.boot.env.SpringApplicationJsonEnvironmentPostProcessor,\
+org.springframework.boot.env.SystemEnvironmentPropertySourceEnvironmentPostProcessor,\
+org.springframework.boot.reactor.DebugAgentEnvironmentPostProcessor
+```
+
+而且Spring Boot也不是手动读取配置文件，然后添加后处理器的，实际上step5需要做的只是发布事件即可，会有对应的事件监听器来完成后处理器的添加：
+
+```java
+publisher. environmentPrepared(bootstrapContext, environment);
+```
+
+#### Step6: Environment赋值给对象
+
+```java
+User user = Binder.get(env).bind("user", User.class).get();
+System.out.println(user);
+
+User user = new User();
+Binder.get(env).bind("user", Bindable.ofInstance(user));
+System.out.println(user);
+```
+
+第六步就是使用Binder将Environment中的键值对赋值给对象。赋值是通过environment中key的名称和类的属性名进行匹配的。用来赋值的对象可以是新建的，也可以是已有的。
+
+#### Step7: 打印Banner
+
+这一步就是将Spring Boot的那个logo打印出来，logo的设置方式有三种：
+
+1. springboot默认使用SpringBootBanner类来输出logo
+2. 在environment中设置`spring.banner.location`指向自己的logo文件(txt类型)
+3. 在environment中设置`spring.banner.image.location`指向自己的logo文件（image类型）
+
+
+### 内嵌Tomcat
+
+![alt text](pic/TomcatComponents.png)
+
+Tomcat中各个组件的作用：
+
+* Connector:负责链接部分，可以配置协议和端口号
+* Context: 运行在Tomcat中的应用，需要设置虚拟路径(url)和磁盘路径
+  * web.xml: 配置servlet,filter,listener，否则它们无法使用。不过spring 3.0后无需该文件，可通过编程创建servlet
+  * class: java代码
+
+
+**代码创建Tomcat:**
+
+```java
+public static void main(String[] args) throws IOException, LifecycleException {
+    // 1. 创建 Tomcat对象
+    Tomcat tomcat = new Tomcat();
+    tomcat.setBaseDir("tomcatDir");     //tomcat服务器所在的地址
+
+    // 2.创建项目文件夹,即docBase 文件夹
+    File docBase = Files.createTempDirectory( "boot.").toFile();    // context所在的地址
+    docBase.deleteOnExit();
+
+    // 3.创建 Tomcat 项目,在 Tomcat 中称为 Context
+    Context context = tomcat.addContext("", docBase.getAbsolutePath());
+
+    // 4.编程添加 Servlet
+    context.addServletContainerInitializer(new ServletContainerInitializer() {
+        @Override
+        public void onStartup(Set<Class<?>> set, ServletContext servletContext) throws ServletException {
+            servletContext.addServlet("helloServlet", new HelloServlet())
+                    .addMapping("/hello");
+        }
+    }, Collections.emptySet());
+    
+    //5.启动 Tomcat
+    tomcat.start();
+
+    //6.创建连接器,设置监听端口
+    Connector connector = new Connector(new Http11Nio2Protocol());
+    connector.setPort(8080);
+    tomcat.setConnector(connector);
+}
+
+public class HelloServlet extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        // 收到任意请求都返回hello world
+        resp.setContentType("text/html");
+        PrintWriter out = resp.getWriter();
+        out.println("<h1>Hello World</h1>");
+    }
+}
+```
+
+**在Spring中内嵌该Tomcat:**
+
+```java
+public class TestTomcat {
+    public static void main(String[] args) throws IOException, LifecycleException {
+        // 1. 创建 Tomcat对象
+        Tomcat tomcat = new Tomcat();
+        tomcat.setBaseDir("tomcatDir");     //tomcat服务器所在的地址
+
+        // 2.创建项目文件夹,即docBase 文件夹
+        File docBase = Files.createTempDirectory( "boot.").toFile();    // context所在的地址
+        docBase.deleteOnExit();
+
+        // 3.创建 Tomcat 项目,在 Tomcat 中称为 Context
+        Context context = tomcat.addContext("", docBase.getAbsolutePath());
+
+        // 4.编程添加 自定义的Servlet 和 Spring提供的Servlet
+        AnnotationConfigWebApplicationContext springApplication = getSpringApplication();
+
+        context.addServletContainerInitializer(new ServletContainerInitializer() {
+            @Override
+            public void onStartup(Set<Class<?>> set, ServletContext servletContext) throws ServletException {
+                servletContext.addServlet("helloServlet", new HelloServlet())
+                        .addMapping("/hello");
+                
+                Collection<ServletRegistrationBean> registrationBeans = springApplication.getBeansOfType(ServletRegistrationBean.class).values();
+                for (ServletRegistrationBean registrationBean : registrationBeans) {
+                    registrationBean.onStartup(servletContext);
+                }
+            }
+        }, Collections.emptySet());
+
+        //5.启动 Tomcat
+        tomcat.start();
+
+        //6.创建连接器,设置监听端口
+        Connector connector = new Connector(new Http11Nio2Protocol());
+        connector.setPort(8080);
+        tomcat.setConnector(connector);
+    }
+
+    public static AnnotationConfigWebApplicationContext getSpringApplication(){
+        // 这里没有用AnnotationConfigServletWebServerApplicationContext，因为其已经内嵌了tomcat服务器了
+        AnnotationConfigWebApplicationContext applicationContext = new AnnotationConfigWebApplicationContext();
+        applicationContext.register(WebConfig.class);
+        applicationContext.refresh();
+
+        return applicationContext;
+    }
+
+    @Configuration
+    public static class WebConfig{
+        @Bean
+        public DispatcherServlet dispatcherServlet(){
+            return new DispatcherServlet();
+        }
+
+        @Bean
+        public ServletRegistrationBean servletRegistrationBean(DispatcherServlet dispatcherServlet) {
+            ServletRegistrationBean servletRegistrationBean = new ServletRegistrationBean(dispatcherServlet, "/");
+            return servletRegistrationBean;
+        }
+
+        @RestController
+        public class Controller{
+            @RequestMapping("/hello2")
+            public String hello2(){
+                return "hello2 from spring";
+            }
+        }
+    }
+}
+```
+
+其实思路很简单，就是在Tomcat注册Servlet时，将spring容器中的ServletRegistrationBean给拿出来。每个ServletRegistrationBean身上都绑了多个Servlet，它负责将Servlet给注册到Tomcat中。
+
+这个过程是在spring application运行时的refresh方法中进行的，也就是第11步中进行。
+
+
+### 自动装配
+
+Spring boot的一个强大特性就是自动装配：即当我们想要使用第三方的工具时，只需要@Autowired就可以将工具对象给拿到。那么为什么我们只是导入了第三方包的maven依赖，就可以直接使用这个包的对象呢？
+
+基本原理就是：
+1. 第三方依赖的包中有META-INF/spring.factories文件，该文件中指出该包下的自动配置类
+2. 自动配置类是一个配置类，其中包含了很多bean等待创建
+3. SpringBoot启动时，会通过SpringFactoriesLoader读取所有包下的META-INF/spring.factories文件，并获得自动配置类的全类名
+4. 将自动配置类的全类名传递给@Import注解，就可以将那些自动配置类添加到自己的Spring项目中了
+
+示例代码：
+
+```java
+public class A41 {
+    public static void main(String[] args) {
+        GenericApplicationContext context = new GenericApplicationContext();
+        context.registerBean(Config.class);
+        context.registerBean(ConfigurationClassPostProcessor.class);
+        context.refresh();
+
+        System.out.println(">>>>>>>>>>>>>>>>");
+        for (String name : context.getBeanDefinitionNames()) {
+            System.out.println(name);
+        }
+    }
+
+    public static class MyImportSelector implements ImportSelector{
+        // 作用：和@Import注解配合使用，返回值会作为@Import的value，从而将第三方配置类的bean添加到自己项目中
+        @Override
+        public String[] selectImports(AnnotationMetadata importingClassMetadata) {
+            // 从配置文件中读取需要导入的第三方配置类的全类名
+            // 需要注意的是SpringFactoriesLoader会读取所有依赖下的META-INF/spring.factories文件
+            List<String> names = SpringFactoriesLoader.loadFactoryNames(MyImportSelector.class, null);
+            return names.toArray(new String[0]);
+        }
+    }
+
+    @Configuration  //自己项目的配置类
+    @Import(MyImportSelector.class)
+    public static class Config{
+
+    }
+
+    @Configuration  //模拟第三方的配置类
+    public static class AutoConfig1{
+        @Bean
+        public Bean1 bean1(){
+            return new Bean1();
+        }
+    }
+
+    @Configuration  //模拟第三方的配置类
+    public static class AutoConfig2{
+        @Bean
+        public Bean2 bean2(){
+            return new Bean2();
+        }
+    }
+
+    public static class Bean1{}
+    public static class Bean2{}
+}
+```
