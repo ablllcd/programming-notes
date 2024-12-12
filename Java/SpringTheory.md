@@ -3240,9 +3240,10 @@ Tomcat中各个组件的作用：
 
 * Connector:负责链接部分，可以配置协议和端口号
 * Context: 运行在Tomcat中的应用，需要设置虚拟路径(url)和磁盘路径
-  * web.xml: 配置servlet,filter,listener，否则它们无法使用。不过spring 3.0后无需该文件，可通过编程创建servlet
+  * web.xml: 配置servlet,filter,listener，否则它们无法使用。不过Servlet3.0后无需该文件，可通过编程创建servlet
   * class: java代码
 
+Tomcat详情可看javaWeb.md
 
 **代码创建Tomcat:**
 

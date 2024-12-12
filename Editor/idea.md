@@ -22,7 +22,7 @@
 * 代码跳转： ctrl + 左击
 * 返回上一次跳转： ctrl + alt + 左箭头
 
-## 配置Maven
+## 配置Maven仓库位置
 
 在创建完spring项目后，如果无法启动项目，可能是maven依赖没有下载成功，可在`build`中查看。
 
@@ -31,8 +31,13 @@
 
 ![Alt text](pic/idea-maven-setting.png)
 
+## Maven创建WEB项目教程
+
+https://blog.csdn.net/u012660464/article/details/114093066
 
 ## 创建Web模块 
+
+补充：其实可以在创建maven项目是选择architype为web。
 
 创建web模块方式很多，最方便的是创建javaEE项目，但是项目结构会变得复杂。所以给一个简单又简介的方法。
 
