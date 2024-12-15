@@ -306,6 +306,7 @@ public class HelloServlet implements Servlet {
   * Session--共享数据存在服务端
 
 * 一次会话：浏览器第一次给服务器资源发送请求,会话建立,直到有一方断开为止。断开可能通过：会话过期，浏览器关闭，用户主动登出账号等
+* 注意：Session一词多义，既指会话概念，也指特定的技术
 
 ## Cookie
 
@@ -408,3 +409,83 @@ public class CookieDemo2 extends HttpServlet {
 ### 补充知识
 
 * 查看浏览器中存储的cookie：在console中输入`document.cookie`
+  
+## Session
+
+### 基本使用
+
+```java
+@WebServlet("/session1")
+public class SessionDemo1 extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        // 第一次访问服务器：创建session并返回
+        HttpSession session = req.getSession();
+        session.setAttribute("msg","Hello Session");
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        this.doGet(req, resp);
+    }
+}
+```
+
+```java
+@WebServlet("/session2")
+public class SessionDemo2 extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        // 第二次访问服务器：读取session并打印
+        HttpSession session = req.getSession();
+        System.out.println(session.getAttribute("msg"));
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        this.doGet(req, resp);
+    }
+}
+```
+
+### 基本原理
+
+Session技术是依赖于Cookie技术的。
+
+1. 浏览器第一次访问服务器，发送普通http请求
+2. 服务器发现浏览器是第一次访问，创建Session并存储在服务器内存，然后在响应中添加字段set-cookie:SESSIONID来将session id作为cookie进行返回
+3. 浏览器发现set-cookie字段，所以会存储session id作为cookie
+4. 浏览器下次请求时，会添加seesion id这个cookie
+5. 服务器收到请求时，也会发现session id这个cookie，去内存中找对应的session，从而实现数据共享
+
+![alt text](pic/session-1.png)
+
+
+### Session的细节
+
+Session可以分为两部分: 
+* Session对象：包含共享信息，存储在服务器内存
+* Session ID：用来查找Session，作为Cookie存储在浏览器
+
+所以Session的存储时间，失效时间都需要从这两方面考虑。但Session ID的存储，作用范围参考上述的cookie即可，下边讲一下Session对象的存储和销毁：
+
+1. 服务器关闭时，Session对象是否删除？
+   * 默认删除，因为Session存储在内存中
+   * 但是在服务器关闭前，可以将Session存储到硬盘，下次启动时在读取（Tomcat默认就是这么做的）
+     * Session钝化：将Session序列化并存储到硬盘
+     * Session活化：将Seesion读取到内存
+
+2. Session的存活时间是多久？
+   * 默认是30分钟
+   * 可以在web.xml文件或其它选项中进行配置
+   * Session对象有删除方法，进行立即删除
+
+3. Session对象的可见范围是多大？
+   * 教程中没说，但是我觉得取决于Session所在内存是否在不同程序间共享
+   * 至少不同服务器间，Session是不会共享的
+
+### Session的特点
+
+1. Session的数据存储在服务端
+2. Session对存储内容的大小和类型没有限制
+3. Session相对更安全
