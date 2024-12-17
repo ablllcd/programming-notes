@@ -32,6 +32,46 @@ public static void main(String[] args){
 }
 ````
 
+## BiFunction
+在 Java 8 中，BiFunction 是一个函数式接口，它和 Function 函数接口十分相似，它可以接受两个不同类型的参数（泛型 T 类型和 泛型 U 类型），然后返回一个其他类型的值（泛型 R 类型）。
+
+源码:
+
+```java
+package java.util.function;
+
+import java.util.Objects;
+
+@FunctionalInterface
+public interface BiFunction<T, U, R> {
+
+    R apply(T t, U u);
+
+    default <V> BiFunction<T, U, V> andThen(Function<? super R, ? extends V> after) {
+        Objects.requireNonNull(after);
+        return (T t, U u) -> after.apply(apply(t, u));
+    }
+}
+```
+
+使用示例：
+```java
+public class Java8BiFunction {
+
+    public static void main(String[] args) {
+        // 两个字符串长度和
+        BiFunction<String, String, Integer> lengthBiFun = (s1, s2) -> s1.length() + s2.length();
+        Integer length = lengthBiFun.apply("java", "www.byte.com");
+        System.out.println(length);
+
+        // x 的 y 次方
+        BiFunction<Integer, Integer, Double> powBiFun = (i1, i2) -> Math.pow(i1, i2);
+        Double pow = powBiFun.apply(2, 10);
+        System.out.println(pow);
+    }
+}
+```
+
 ## 方法引用
 用于进一步简化lambda表达式。
 
