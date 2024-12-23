@@ -10,6 +10,7 @@
 ### 编辑文本
 * 切换某行位置：shift + alt + 上下键
 * 删除一行：ctrl + Y
+* 将内容添加到try-catch块：ctrl + alt + T
 
 ### 查看类结构
 
@@ -22,6 +23,10 @@
 * 代码跳转： ctrl + 左击
 * 返回上一次跳转： ctrl + alt + 左箭头
 * 查看方法的文档：ctrl + Q
+
+## 常见配置
+
+* 标签页多行显示：https://blog.csdn.net/With_Her/article/details/82254187
 
 ## 配置Maven仓库位置
 

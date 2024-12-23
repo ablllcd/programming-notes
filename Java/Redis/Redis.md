@@ -421,4 +421,234 @@ public void test3() throws JsonProcessingException {
 
 2. 逻辑过期：热点key的ttl写到value中，而不是真的设置TTL，从而保证该key不会在缓存中消失。此外，当value中的过期时间到了时，第一个请求的线程获取互斥锁，并进行缓存重构，其它线程直接返回已过期的热点key。
 
+## Redis实现秒杀功能（高并发）
 
+### 全局唯一ID
+
+一般情况下，ID都是从0开始自增的，但是这会带来两个问题：
+
+1. ID存在规律，会暴露出来一些信息（例如用户数量有多少）
+2. 如果数据量很大，数据要放在多张表。多张表独立自增，会带来ID冲突。
+
+所以需要一个全局唯一ID生产器，它需要以下特征：
+
+1. 高可用：ID生成是频繁发生的，所以该服务必须高可用
+2. 高性能：生成ID的耗时要少
+3. 唯一性：生成的ID不能重复
+4. 递增性：为了方便数据库索引，ID需要自增
+5. 安全性：隐藏ID携带的信息
+
+其中常见保证ID`安全性，递增性和唯一性`的方法：
+
+![alt text](../pic/ID安全性.png)
+
+ID用64位的long类型存储，并分为三个组成部分:
+
+* 符号位:1bit,永远为0
+
+* 时间戳:31bit,以秒为单位,可以使用69年
+
+* 序列号:32bit,秒内的计数器,支持每秒产生2^32个不同ID
+
+根据ID创建时间确定时间戳，如果这一秒内有多个ID创建，则增加序列号保证唯一性。
+
+
+### 分布式锁
+
+分布式锁：在分布式的情况下，多台机器可以察觉并获取相同的互斥锁。
+
+![alt text](../pic/分布式锁.png)
+
+### LUA脚本
+
+Redis提供了Lua脚本功能,在一个脚本中编写多条Redis命令,确保多条命令执行时的原子性。Lua是一种编程语言,它的基本语法大家可以参考网站:https://www.runoob.com/lua/lua-tutorial.html
+
+例如：
+```lua
+-- 参数列表
+local seckillVoucherID = ARGV[1]
+local userID = ARGV[2]
+
+-- key列表
+local stockKey = 'seckill:stock:'..seckillVoucherID
+local orderKey = 'seckill:order:'..seckillVoucherID
+
+-- 1. 查看秒杀券库存是否充足
+if tonumber(redis.call('get', stockKey)) <= 0 then
+    -- 秒杀券不足则返回1
+    return 1
+end
+
+-- 2. 判断一人一单
+if redis.call('sismember', orderKey, userID) == 1 then
+    --此人已经下过单
+    return 2
+end
+
+-- 3. 减库存并且创建订单
+redis.call('incrby',stockKey, -1)
+redis.call('sadd',orderKey, userID)
+return 0
+```
+
+这些操作可以被看做为一个原子操作并执行。
+
+```java
+// 加载Lua脚本
+private static DefaultRedisScript<Long> seckillScript;
+static {
+    seckillScript = new DefaultRedisScript<>();
+    seckillScript.setLocation(new ClassPathResource("buySeckillVoucher.lua"));
+    seckillScript.setResultType(Long.class);
+}
+
+...
+
+// 执行Lua脚本，完成缓存中的扣减库存和添加订单
+Long result = stringRedisTemplate.execute(seckillScript, Collections.emptyList(),
+        voucherID + "", id.toString());
+
+```
+
+### Redission
+
+Redisson是一个在Redis的基础上实现的Java驻内存数据网格(In-Memory Data Grid)。它不仅提供了一系列的分布式的Java常用对象,还提供了许多分布式服务,其中就包含了各种分布式锁的实现。
+
+
+#### Quick Start
+
+1. 添加依赖
+
+```
+<dependency>
+    <groupId>org.redisson</groupId>
+    <artifactId>redisson</artifactId>
+    <version>3.13.6</version>
+</dependency>
+```
+
+2. 配置Redisson
+
+```
+@Configuration
+public class RedissonConfig {
+    @Bean
+    public RedissonClient redissonClient(){
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        return Redisson.create(config);
+    }
+}
+```
+
+3. 使用Redission
+```java
+// 使用Redisson提供的分布式锁
+RLock lock = redissonClient.getLock("redisson-lock:order:" + userID);   //可重入锁
+boolean isLock = lock.tryLock();    //设置为不等待
+if (!isLock) {
+    // 获取锁失败：说明该用户ID对应的锁已经存在，也就是该用户已经正在购买了
+    return Result.fail("一个用户只能下一单");
+}
+try {
+    // 获取锁后实现业务
+    IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+    return proxy.createOrderInDB(voucherID, userID);
+} finally {
+    // 释放锁
+    lock.unlock();
+}
+```
+
+### 消息队列
+
+Redis常见的缓存场景是：客户端和Redis进行交互，在内存中完成事务处理，而不进行数据库操作；而数据库操作则是由单独的线程池来进行处理。结果就是客户端可以很快得到响应，而服务端可以自己慢慢处理数据库。而这种异步通讯的方式，往往需要消息队列。
+
+**消息队列关注的特性：**
+
+1. 持久性：宕机不会导致数据丢失
+2. 内存大小：消息数量往往很多，需要大内存
+3. 消息丢失：如果消息被取走，而消费者宕机，是否会导致消息丢失
+4. 消息共享：能否让一个消息被多个消费者拿走
+
+为此有专门的服务来负责消息队列，例如RabbitMQ。而且Redis也提供了消息队列的服务。
+
+**基于List实现消息队列**
+
+就是使用Redis中的list作为消息队列，利用POP,PUSH（BPOP,BPUSH）方法来操作消息队列。
+
+优点：
+* 内存由Redis负责
+* 数据持久化
+
+缺点：
+* 无法实现消息共享
+* 无法处理消息丢失。
+
+
+**基于PubSub的消息队列**
+
+PubSub(发布订阅)是Redis2.0版本引入的消息传递模型。顾名思义,消费者可以订阅一个或多个channel,生产者向对应channel发送消息后,所有订阅者都能收到相关消息。
+
+* SUBSCRIBE channel [channel]:订阅一个或多个频道
+* PUBLISH channel msg:向一个频道发送消息
+* PSUBSCRIBE pattern[pattern]:订阅与pattern格式匹配的所有频道
+
+优点：
+* 实现消息共享
+
+缺点：
+* 不进行消息持久化：如果没人阻塞订阅，消息直接丢失（消费者必须一直在监听）
+* 消费者监听到的消息缓存在消费者特定区域，当超出内存时消息直接丢失
+* 无法处理消息丢失
+
+**基于Stream的消息队列**
+
+![alt text](../pic/MQ-STREAM.png)
+
+![alt text](../pic/MQ-STREAM-2.png)
+
+用XADD/XREAD实现消息队列的缺点是可能消息漏读：消费者每次都选择处理一个最新的消息，但是新消息一次可以来好几个，那么其它新消息就漏读了。
+
+**消费者组**：
+
+![alt text](../pic/MQ-STREAM-3.png)
+
+
+创建消费者组:
+
+```
+XGROUP CREATE key groupName ID [MKSTREAM]
+```
+
+* key：队列名称
+* groupName：消费者组名称
+* ID：起始ID标示,$代表队列中最后一个消息（该消费组不要队列原有的消息），0则代表队列中第一个消息（该消费组要队列原有的消息）
+* MKSTREAM：队列不存在时自动创建队列
+
+从消费者组读取消息:
+
+```
+XREADGROUP GROUP group consumer [COUNT count] [BLOCK milliseconds] [NOACK] STREAMS key [key ... ] ID [ID ... ]
+```
+*  group:消费组名称
+*  consumer:消费者名称,如果消费者不存在,会自动创建一个消费者
+*  count:本次查询的最大数量
+*  BLOCK milliseconds:当没有消息时最长等待时间
+*  NOACK:无需手动ACK,获取到消息后自动确认
+*  STREAMS key:指定队列名称
+*  ID:获取消息的起始ID:
+   * ">":从下一个未消费的消息开始
+   *  其它:根据指定id从pending-list中获取已消费但未确认的消息,例如0,是从pending-list中的第一个消息开始
+
+其它常见命令:
+```
+# 删除指定的消费者组
+XGROUP DESTORY key groupName
+
+# 给指定的消费者组添加消费者
+XGROUP CREATECONSUMER key groupname consumername
+
+# 删除消费者组中的指定消费者
+XGROUP DELCONSUMER key groupname consumername
+```
