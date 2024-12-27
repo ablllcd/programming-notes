@@ -739,3 +739,349 @@ public class AOPTest {
 
 * 持久性(Durability):事务处理结束后,对数据的修改就是永久的,即便系统故障也不会丢失。
 
+### Spring事务的三大基础设施
+
+1. PlatformTransactionManager：该接口定义了Spring事务该有的操作。其功能类似于JDBC，作为Spring要求的一个规范，具体实现由Mysql等厂商提供。
+```java
+public interface PlatformTransactionManager extends TransactionManager {
+    // 获取事务
+    TransactionStatus getTransaction(@Nullable TransactionDefinition definition) throws TransactionException;
+    // 提交
+    void commit(TransactionStatus status) throws TransactionException;
+    // 回滚
+    void rollback(TransactionStatus status) throws TransactionException;
+}
+```
+
+2. TransactionStatus：事务的状态，也可以抽象地认为是事务本身
+```
+public interface TransactionStatus extends TransactionExecution, SavepointManager, Flushable {
+    boolean hasSavepoint();
+
+    void flush();
+}
+```
+
+3. TransactionDefinition：定义事务的行为，例如传播性，隔离级别等
+
+
+### 编程式事务
+
+1. 导入spring依赖和mysql依赖
+```
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-context</artifactId>
+      <version>6.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+      <version>5.3.10</version>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <version>8.2.0</version>
+    </dependency>
+  </dependencies>
+```
+
+2. 配置bean
+
+```
+    <!--  1. 配置mysql  -->
+    <bean class="org.springframework.jdbc.datasource.DriverManagerDataSource" id="dataSource">
+        <property name="username" value="root"/>
+        <property name="password" value="123456"/>
+        <property name="url" value="jdbc:mysql:///spring_trans"/>
+        <property name="driverClassName" value="com.mysql.cj.jdbc.Driver"/>
+    </bean>
+
+    <!--  2. 配置事务管理器  -->
+    <bean class="org.springframework.jdbc.datasource.DataSourceTransactionManager" id="transactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!--  3. 配置TransactionTemplate  -->
+    <bean class="org.springframework.transaction.support.TransactionTemplate" id="transactionTemplate">
+        <property name="transactionManager" ref="transactionManager"/>
+    </bean>
+
+    <!--  4. 配置jdbcTemplate  -->
+    <bean class="org.springframework.jdbc.core.JdbcTemplate" id="jdbcTemplate">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+```
+
+3. 进行编程式事务
+```java
+@Component
+public class UserService {
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+    @Autowired
+    PlatformTransactionManager transactionManager;
+    @Autowired
+    TransactionTemplate transactionTemplate;
+
+    public void transfer(){
+        // 1.设置transaction规则
+        DefaultTransactionDefinition transactionDefinition = new DefaultTransactionDefinition();
+        // 2.获取transaction
+        TransactionStatus transactionStatus = transactionManager.getTransaction(transactionDefinition);
+        try {
+            // 3.进行事务逻辑
+            jdbcTemplate.update("update user set money = ? where username = ?",1000,"cain");
+            // 3.1 成功则提交事务
+            transactionManager.commit(transactionStatus);
+        } catch (DataAccessException e) {
+            // 3.2 失败则回滚事务
+            transactionManager.rollback(transactionStatus);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void transfer2(){
+        transactionTemplate.execute(new TransactionCallbackWithoutResult() {
+            @Override
+            protected void doInTransactionWithoutResult(TransactionStatus status) {
+                try {
+                    // 进行事务逻辑
+                    jdbcTemplate.update("update user set money = ? where username = ?",2000,"cain");
+                    int i = 1/0;
+                } catch (DataAccessException e) {
+                    // 3.2 失败则回滚事务
+                    status.setRollbackOnly();
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+    }
+}
+```
+
+其中DataSourceTransactionManager是MySQL提供的TransactionManager的实现类，其负责事务操作。而TransactionTemplate是Spring进一步对TransactionManager进行封装，简化事务操作。两者都可以用来操作事务。
+
+从上述示例可见编程式事务中事务代码和业务代码杂糅在一起，导致真正的逻辑不清晰。所以一般使用AOP将事务代码抽取出来，这就是声明式事务的做法。
+
+### 声明式事务
+
+声明式事务核心是AOP。实现AOP可以通过XML文件来添加Aspect，但是比较繁琐，所以下边改用注解的方式来实现声明式事务。
+
+1. 因为使用了AOP，所以需要把AOP的依赖也添加
+```
+<dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-context</artifactId>
+      <version>6.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+      <version>5.3.10</version>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <version>8.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.aspectj</groupId>
+      <artifactId>aspectjweaver</artifactId>
+      <version>1.9.7</version>
+    </dependency>
+```
+
+2. 配置类中添加 PlatformTransactionManager 并且开启事务
+
+```java
+@Configuration
+@ComponentScan("com.cain")
+// 开启事务
+@EnableTransactionManagement
+public class SpringConfig {
+    @Bean
+    public DataSource dataSource() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        dataSource.setUrl("jdbc:mysql://localhost:3306/spring_trans");
+        dataSource.setUsername("root");
+        dataSource.setPassword("123456");
+        return dataSource;
+    }
+
+    @Bean
+    public JdbcTemplate jdbcTemplate() {
+        return new JdbcTemplate(dataSource());
+    }
+
+    @Bean
+    public PlatformTransactionManager transactionManager() {
+        return new DataSourceTransactionManager(dataSource());
+    }
+}
+```
+
+3. 使用事务
+
+```java
+@Component
+public class UserService2 {
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @Transactional
+    public void transfer3(){
+        jdbcTemplate.update("update user set money = ? where username = ?",3000,"cain");
+        int i = 1/0;
+    }
+}
+```
+
+其中需要注意的是，虽然添加事务只需要开启@EnableTransactionManagement并添加@Transactional注解即可，但是Spring容器中要保证有PlatformTransactionManager的bean。
+
+
+### 隔离级别
+
+为了保证并发性，通常允许多个事务同时执行。而多个事务同时执行会带来一些问题，例如脏读，幻读等。为了避免某个问题，需要事务之间达到某种隔离性。例如事务1修改了value1=100，事务2读value1得到100，事务1发生回滚导致value1=80，那么事务2就发生了脏读。为了避免脏读，可以设置事务2只读取已经commit的值，此时事务的隔离级别为read commited。
+
+通常数据库都会提供四种隔离级别，一般隔离性越好，并发性和性能就越差。
+
+![alt text](pic/数据隔离.png)
+
+
+#### Read Uncommited 读未提交
+
+```sql
+-- 2. 事务1查询到money为50
+start transaction;
+select * from user;
+commit;
+```
+
+```sql
+-- 1. 事务2将money该为50
+start transaction;
+update user set money=50 where username='cain';
+-- 3. 事务2发生回滚，将money还原为100
+rollback
+```
+
+这就是脏读问题。
+
+#### Read Commited 读已提交
+
+```sql
+-- 1. 事务1修改money为50，但是为提交
+start transaction;
+update user set money=50 where username='cain';
+-- 3. 事务1提交
+commit ;
+```
+
+```sql
+start transaction;
+-- 2. 事务2查询money发现是修改前的100
+select * from user;
+-- 4. 事务2查询money发现是修改后的50
+select * from user;
+commit;
+```
+
+这解决了脏读问题，但是发现事务2两次相同的查询带来不同的结果--即不可重复读的问题。
+
+
+#### Repeatable Read 可重复读
+
+```sql
+-- 2. 事务1修改money为50后提交
+start transaction;
+update user set money=50 where username='cain';
+select * from user;
+commit;
+```
+
+```sql
+start transaction;
+-- 1. 事务2读取到money为原始值100
+select * from user;
+-- 3. 事务2再次读依旧是原始值100
+select * from user;
+commit;
+
+-- 4. 直到事务提交后再查询才是修改后的值50
+select * from user;
+```
+
+可重复读保证在事务中进行相同的查询，会得到相同的结果。
+
+#### Serilizable 串行/序列化
+
+```sql
+-- 1.串行事务执行
+start transaction;
+update user set money=100 where username='cain';
+commit;
+```
+
+```sql
+-- 2.其它事务尝试执行
+start transaction;
+-- 3.这里会卡住，等待串行事务提交
+update user set money=100 where username='cain';
+commit;
+```
+
+
+串行要求事务真的是一个一个执行的，当事务1未提交时，事务2只能等待。
+
+串行级别事务执行前，如果有其它事务在执行则进行等待；串行事务执行是，其它任意隔离级别的事务要执行也得先等串行事务执行完。
+
+### 传播性
+
+* REQUIRED（默认）: 如果当前存在事务,则加入该事务;如果当前没有事务,则创建一个新的事务
+* REQUIRES_NEW: 创建一个新的事务,如果当前存在事务,则把当前事务挂起.
+  * 此时外部事务和内部事务是两个独立的事务
+  * 注意，如果外部事务和内部事务都访问同一个表锁，则会产生死锁问题
+* NESTED：如果当前存在事务,则创建一个事务作为当前事务的嵌套事务来运行;如果当前没有事务,则创建新事务。
+  * 此时内部事务是外部事务的子事务，外部回滚内部一定回滚；内部异常被处理外部事务可以不会滚。
+* MANDATORY：如果当前存在事务,则加入该事务;如果当前没有事务,则抛出异常
+* SUPPORTS：如果当前存在事务,则加入该事务;如果当前没有事务,则以非事务的方式继续运行
+* NOT_SUPPORTED：以非事务方式运行,如果当前存在事务,则把当前事务挂起
+* NEVER：以非事务方式运行,如果当前存在事务,则抛出异常
+
+### 回滚规则
+
+默认情况下，事务遇到Runtime Exception和Error时才进行回滚，遇到检查时异常并不回滚。当然，也可以通过rollbackFor或者noRollbackFor来指出那些异常进行回滚/不回滚。
+
+```java
+@Transactional(rollbackFor = IOException.class)
+public void transfer4() throws IOException {
+    jdbcTemplate.update("update user set money = ? where username = ?",1000,"cain");
+    throw new IOException();
+}
+```
+
+### 只读事务&超时时间
+
+```java
+@Transactional(readOnly = true，timeout = 3000)
+public void transfer4(){
+    jdbcTemplate.update("update user set money = ? where username = ?",1000,"cain");
+}
+```
+
+设置readOnly为true说明该事务不能修改数据库，只能进行查询，所以上述的update操作会报错。至于为什么要把查询操作添加到事务中，可能是想利用事务的可重复读的特性。
+
+超时时间是指如果没在规定时间内完成事务就回滚。
+
+### 注意事项
+
+由于Spring事务是通过AOP的动态代理实现的，所以有时会出现事务失效的情况，例如：
+
+1. 事务方法没有设置为public
+   * 可能是代理创建是通过继承来创建的
+2. 事务方法被该类的其它方法调用
+   * 应调用代理的方法

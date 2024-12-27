@@ -181,6 +181,17 @@ having avg (balance) > 1200
 show global variables like 'port';
 ```
 
+隔离级别
+```
+// 全局隔离级别
+select @@global.transaction_isolation;
+
+// 当前会话隔离级别
+select @@transaction_isolation;
+
+// 修改会话隔离级别
+ set session transaction isolation level serializable;
+```
 ## 常见问题
 
 ### 数据库中的中文记录在命令行中显示乱码

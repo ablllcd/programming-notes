@@ -1,3 +1,5 @@
+# Redis基础
+
 ## 认识Redis
 
 Redis诞生于2009年全称是Remote Dictionary Server,远程词典服务器,是一个基于内存的键值型NoSQL数据库。
@@ -652,3 +654,141 @@ XGROUP CREATECONSUMER key groupname consumername
 # 删除消费者组中的指定消费者
 XGROUP DELCONSUMER key groupname consumername
 ```
+
+# Redis 分布式
+
+单节点存在的问题：
+
+* 数据丢失：Redis重启服务可能丢失数据
+* 并发能力不足：单节点难以处理高并发请求
+* 故障影响：单节点崩溃导致整个系统崩溃
+* 存储能力：单节点存储能力有限
+
+## Redis持久化
+
+### RDB
+
+RDB全称Redis Database Backup file(Redis数据备份文件),也被叫做Redis数据快照。简单来说就是把内存中的所有数据都记录到磁盘中。当Redis实例故障重启后,从磁盘读取快照文件,恢复数据。
+
+```
+#由Redis主进程来执行RDB,会阻塞所有命令
+127.0.0.1:6379>save 
+
+#开启子进程执行RDB,避免主进程受到影响
+127.0.0.1:6379>bgsave 
+```
+Redis停机时会执行一次RDB，生成的快照文件为RDB文件,默认是保存在当前运行目录。
+
+除此之外，Redis运行时也会定期执行RDB来存储数据,可以在redis.conf文件中配置:
+```
+# 900秒内,如果至少有1个key被修改,则执行bgsave; 如果是save "" 则表示禁用RDB
+save 900 1
+save 300 10
+save 60 10000
+```
+
+RDB的其它配置也可以在redis.conf文件中设置:
+```
+# 是否压缩 ,建议不开启,压缩也会消耗cpu,磁盘的话不值钱
+rdbcompression yes
+
+# RDB文件名称
+dbfilename dump.rdb
+
+# 文件保存的路径目录
+dir ./
+```
+
+#### bgsave分析
+
+![alt text](../pic/rdb.png)
+
+bgsave命令让redis主线程进行fork创建出子线程，然后子线程来进行数据存储。子线程运行时是独立的，但是子线程的创建需要主线程阻塞进行。为了减少主线程的阻塞时间，fork时只将主线程的页表（即数据的地址）拷贝到子线程，而不是真的将redis的数据拷贝一份。
+
+在子线程运行时需要读取数据，而此时主线程也可能修改数据，为了避免脏读，子线程将数据标记为只读。而主线程要修改标记为只读的数据时，进行数据拷贝，然后修改拷贝的数据。
+
+### AOF
+
+AOF全称为Append Only File(追加文件)。Redis处理的每一个写命令都会记录（追加）在AOF文件,可以看做是命令日志文件。
+
+AOF默认是关闭的,需要修改redis.conf配置文件来开启AOF:
+```
+# 是否开启AOF功能,默认是no
+appendonly yes
+# AOF文件的名称
+appendfilename "appendonly.aof"
+```
+
+AOF的命令记录的频率也可以通过redis.conf文件来配:
+```
+# 表示每执行一次写命令,立即记录到AOF文件
+appendfsync always
+#写命令执行完先放入AOF缓冲区,然后表示每隔1秒将缓冲区数据写到AOF文件,是默认方案
+appendfsync everysec
+# 写命令执行完先放入AOF缓冲区,由操作系统决定何时将缓冲区内容写回磁盘
+appendfsync no
+```
+
+AOF的特点就是它记录写命令，而不是数据。所以每次持久化只需要将命令追加到文件中，而不需要将整个数据重新写入磁盘，使得AOF每次持久化耗时少。但是AOF记录所有操作，而一条数据往往有多个写操作，所以AOF文件往往比RDB文件大很多。
+
+#### AOF重写
+
+为了减少AOF文件大小，Redis提供了重写操作--bgrewirteaof，来将过期的（被覆盖的）写操作删除。
+
+Redis也会在触发阈值时自动去重写AOF文件。阈值也可以在redis.conf中配置:
+```
+# AOF文件比上次文件 增长超过多少百分比则触发重写
+auto-aof-rewrite-percentage 100
+# AOF文件体积最小多大以上才触发重写
+auto-aof-rewrite-min-size 64mb
+```
+
+## 主从架构
+
+为了提高Redis的性能，可以构建主从架构来做读写分离：
+
+![alt text](../pic/Redis主从.png)
+
+首先要启动多个Redis应用来创建多个实例，每个实例有自己的IP地址和端口号。但这些实例还没有任何关系,要配置主从可以使用replicaof或者slaveof(5.0以前)命令。（在配置文件中设置则永久有效，在redis-cli客户端设置则重启后失效）
+
+```
+# 设置当前实例为指定节点的slave
+slaveof <masterip> <masterport>
+
+# 查看当前节点的状态
+INFO replication
+```
+
+通过上述命令给多个实例构建主从关系后，Redis会自动实现数据同步，而且保证只能在主节点写，从节点读。（在从节点写会直接报错）所以Redis的主从架构配置非常简单，只需要设置谁是谁的SLAVE即可。
+
+### 数据同步
+
+**全量同步**：第一次同步
+
+![alt text](../pic/主从同步.png)
+
+master如何判断slave是不是第一次来同步数据?这里会用到两个很重要的概念:
+
+* Replication ld:简称replid,是数据集的标记,id一致则说明是同一数据集。每一个master都有唯一的replid,slave则会继承master节点的replid
+
+* offset:偏移量,随着记录在repl_baklog中的数据增多而逐渐增大。slave完成同步时也会记录当前同步的offset。如果slave的offset小于master的offset,说明slave数据落后于master,需要更新。
+
+因此slave做数据同步,必须向master声明自己的replication id 和offset,master才可以判断到底需要同步哪些数据
+
+**增量同步**
+
+![alt text](../pic/主从同步2.png)
+
+repl_baklog大小有上限,写满后会覆盖最早的数据。如果slave断开时间过久,导
+致数据被覆盖,则无法实现增量头现增重同步,只能再次全量同步。
+
+**同步优化**
+
+可以从以下几个方面来优化Redis主从就集群:
+* 在master中配置repl-diskless-sync yes启用无磁盘复制,避免全量同步时的磁盘I0，而是生成RDB时直接发送到网关。
+
+* Redis单节点上的内存占用不要太大,减少RDB导致的过多磁盘I0
+
+* 适当提高repl_baklog的大小,发现slave宕机时尽快实现故障恢复,尽可能避免全量同步
+
+* 限制一个master上的slave节点数量,如果实在是太多slave,则可以采用主-从-从链式结构,减少master压力
