@@ -141,6 +141,18 @@ layout 的作用是将日志格式化。PatternLayout 能够根据用户指定�
 ```
 176  [main] DEBUG manual.architecture.HelloWorld2 - Hello world.
 ```
+#### 常见Layout
+```
+%c 输出logger名称
+%C 输出类名
+%d{HH:mm:ss.SSS} 表示输出到毫秒的时间
+%t 输出当前线程名称
+%-5level 输出日志级别，-5表示左对齐并且固定输出5个字符，如果不足在右边补0
+%logger 输出logger名称，因为Root Logger没有名称，所以没有输出
+%msg 日志文本
+%n 换行
+```
+更多参考：https://blog.csdn.net/AlbenXie/article/details/124690762
 
 ## 配置文件
 
@@ -178,3 +190,53 @@ layout 的作用是将日志格式化。PatternLayout 能够根据用户指定�
 
 ## 推荐参考资料
 https://github.com/YLongo/logback-chinese-manual
+
+## SpringBoot中使用LogBack
+
+当使用SpringBoot Starter时，其默认使用的日志框架是slf4j+logback，无需额外添加配置。这从其依赖可以看出：
+
+![alt text](pic/springboot-log-dependency.png)
+
+其中包含logcak的依赖，而'jul-to-slf4j'和'log4j-to-slf4j'都是将其它框架转为slf4j。而且Spring容器中也会包含LogBack的实例，直接使用即可。
+
+
+### 基本使用
+```java
+@RestController
+public class HelloController {
+    private static final Logger logger = LoggerFactory.getLogger(HelloController.class);
+
+    @RequestMapping("/hello")
+    public String hello() {
+        logger.info("hello log message");
+        return "hello world";
+    }
+}
+```
+
+### 配置文件
+
+```
+# 日志输出格式
+#logging.pattern.console=%d{HH:mm:ss.SSS} %t %c %level %msg %n
+
+# 日志输出文件，注意两者不能同时生效
+logging.file.name=D:/testLog
+logging.file.path=D:/
+
+## 每次启动是否清除之前的配置
+#logging.logback.rollingpolicy.clean-history-on-start=true
+## 日志文件保留的最大天数
+#logging.logback.rollingpolicy.max-history=7
+## 文件达到多少开始生成下一个文件
+#logging.logback.rollingpolicy.max-file-size=
+## 新文件生成的命名格式
+#logging.logback.rollingpolicy.file-name-pattern=
+## 总日志文件的最大容量限制，超过时删除历史文件
+#logging.logback.rollingpolicy.total-size-cap=
+
+# 设置输出级别
+logging.level.com.cain.logtest.controller=INFO
+```
+
+需要注意的是，如果同时配置了application.properties和logback.xml，会以logback.xml为配置。
