@@ -887,3 +887,94 @@ dir "/tmp/s1"
 之后正常使用RedisTemplate即可，主从和哨兵已经配置完成，不需要额外添加或修改代码。
 
 
+## 分片集群
+
+主从和哨兵可以解决高可用、高并发读的问题。但是依然有两个问题没有解决
+
+* 海量数据存储问题
+* 高并发写的问题
+
+使用分片集群可以解决上述问题,分片集群特征:
+
+![alt text](../pic/分片集群.png)
+
+* 集群中有多个master,每个master保存不同数据
+* 每个master都可以有多个slave节点
+* master之间通过ping监测彼此健康状态，无需哨兵
+* 客户端请求可以访问集群任意节点,最终都会被转发到正确节点
+
+### 创建分片集群
+
+1. 运行多个redis实例，每个实例的配置文件中指出使用分片集群
+   
+   ```
+   port 6379
+   # 开启集群功能
+   cluster-enabled yes
+   #集群的配置文件名称,不需要我们创建,由redis自己维护
+   cluster-config-file /tmp/6379/nodes.conf
+   # 节点心跳失败的超时时间
+   cluster-node-timeout 5000
+   # 持久化文件存放目录
+   dir /tmp/6379
+   # 绑定地址
+   bind 0.0.0.0
+   # 让redis后台运行
+   daemonize yes
+   # 注册的实例ip
+   replica-announce-ip 192.168.150.101
+   # 保护模式
+   protected-mode no
+   # 数据库数量
+   databases 1
+   # 日志
+   logfile /tmp/6379/run.log
+   ```
+
+2. 在redis-cli中配置多个redis实例为一个集群
+
+    ```
+    redis-cli --cluster create --cluster-replicas 1 192.168.150.101:7001 192.168.150.101:7002 192.168.150.101:7003 192.168.150.101:8001 192.168.150.101:8002 192.168.150.101:8003
+    ```
+    其中`--cluster create`表示创建集群；`--cluster-replicas 1`表示每个master有1个slave，所以后续的6个示例中，前三个作为master，后三个作为slave。
+
+### 散列插槽
+
+现在问题是数据来了应该存储在哪个master上，为此Redis提供了散列插槽（Hash Slot），其长度为16384。redis会根据key的有效部分计算插槽值,分两种情况:
+
+* key中包含{},且{}中至少包含1个字符,{}中的部分是有效部分
+* key中不包含{},整个key都是有效部分
+
+例如:key是num,那么就根据num计算,如果是{itcast}num,则根据itcast计算。
+
+计算方式是利用CRC16算法得到一个hash值,然后对16384取余,得到的结果就是slot值，而每个master均匀地负责部分slot。
+
+不将数据直接分配给master，而是为数据计算slot值，根据slot值去找master的行为是为了分片集群的动态性。这样master宕机或者额外添加时，更容易重新分配数据。
+
+### 动态扩容&故障恢复
+
+通过`redis-cli --cluster add-node`指令可以为已有的分片集群进行扩容，添加的node默认为master也可以设置为某个master的slave。需要注意的是，此时添加的master并不负责任何slot，需要通过`rehash`命令来将某个已有的master的slot分给新增的master。
+
+而且分片集群自带故障恢复，因为master之间通过心跳来互相检测。当某个master宕机时，会选该master的一个slave升级为master，宕机的master恢复后则成为slave。也可以通过`failover`指令来主动将slave升级为master，将master降级为slave。
+
+### RedisTemplate使用分片集群
+
+RedisTemplate底层同样基于lettuce实现了分片集群的支持,而使用的步骤与哨兵模式基本一致:
+
+1. 引入redis的starter依赖
+2. 配置分片集群地址
+3. 配置读写分离
+
+与哨兵模式相比,唯一的区别是第二步：将哨兵的地址改为分片集群的地址
+```
+spring:
+    redis:
+        cluster :
+            nodes:  #指定分片集群的每一个节点信息
+                - 192.168.150.101:7001
+                - 192.168.150.101:7002
+                - 192.168.150.101:7003
+                - 192.168.150.101:8001
+                - 192.168.150.101:8002
+                - 192.168.150.101:8003
+```
