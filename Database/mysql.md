@@ -208,6 +208,13 @@ mysql -u root -p --default-character-set=utf8
 
 ![alt text](mysqlPIC/整体框架.png)
 
+MySQL服务器如图分为四层：
+* 连接层：处理客户端的链接，用户的登录校验等
+* 服务层：处理真正的服务请求，例如对表的增删改查
+* 引擎层：控制数据存储和查询的方式
+* 存储层：负责数据的物理存储
+
+下边主要研究存储引擎。
 
 ## 存储引擎
 
@@ -237,9 +244,20 @@ InnoDB 是 MySQL 中默认的存储引擎,它拥有以下一些重要的特点:
 2. 行级锁：InnoDB 使用行级锁定,而不是表级锁定,这大大提高了多用户并发操作的性能。
 3. 外键约束：InnoDB 支持外键约束,可以方便地定义表与表之间的关系。
 
-其逻辑存储结构如下：
+innoDB引擎的每张表都会对应这样一个表空间文件`xxx.ibd`：
+* xxx代表的是表名
+* 该文件存储xxx表的表结构(frm、sdi)、数据和索引
+* 可以通过`show variables like 'innodb_file_per_table'`来查看innodb_file_per_table，如果是ON则表示每张表都有单独的idb文件
+* 本机的idb文件存储在C:\ProgramData\MySQL\MySQL Server 8.0\Data
+
+innoDB的逻辑存储结构如下：
 
 ![alt text](mysqlPIC/2.png)
+
+* 其中区固定为1M，页固定为16K，所以一个区内有64页
+* Row中存储的数据除了column外，还有额外的数据
+
+这里先简单了解下，后续优化时会用到。
 
 ### MyISAM 和 Memory 存储引擎
 
@@ -248,18 +266,24 @@ MyISAM是早期的默认引擎，其特点为：
 2. 表级锁
 3. 不支持外键
 
+MyISAM类型的表强调的是性能，其执行速度比InnoDB类型更快，但是不提供事务支持。
+
+MyISAM对应的表在磁盘上存储成三个文件：
+* .frm文件存储表定义。
+* 数据文件的扩展名为.MYD (MYData)。
+* 索引文件的扩展名是.MYI (MYIndex)。
+
 Memory将数据存储在内存中，作为临时存储表，可以使用hash索引
 
 ### 存储引擎选择
 
 Innodb: 在需要事务或者需要保证数据一致性时使用。
 
-MyISAM: 可用于对数据一致性要求不高的地方，例如频繁的插入和删除操作，少量的更改操作。（日志系统）
+MyISAM: 可用于对数据一致性要求不高的地方，例如频繁的插入和删除操作，少量的更改操作。（
 
-Memory： 可用于缓存。
+Memory：可用于缓存。
 
 而由于NoSQL的存在，让MongoDB替代了MyISAM，Redis替代了Meomory。
-
 
 ## 索引
 
@@ -561,3 +585,82 @@ select * from table where id in (select id from table limit 10000,10)
 ```
 
 其中先获取limit数据对应的id，该步骤通过索引即可完成；然后再根据id获取对应的实际数据，从而避免了读取大量的实际数据。
+
+## 视图
+
+视图(View)是一种虚拟存在的表。视图中的数据并不在数据库中实际存在,行和列数据来自定义视图的查询中使用的表,并且是在使用视图时动态生成的。
+
+通俗的讲,视图只保存了查询的SQL逻辑,不保存查询结果。所以我们在创建视图的时候,主要的工作就落在创建这条SQL查询语句上。
+
+### 基本使用
+
+```
+## 创建视图
+create view user_v1 as select id,username from user;
+
+## 查询视图
+select * from user_v1 where id=1;
+select * from user_v1;
+
+## 修改视图
+update user_v1 set username='ccain' where id=1;
+insert into user_v1 value (3,'xiaoming');
+
+## 删除视图
+drop view if exists user_v1;
+```
+
+需要注意：对视图的修改会同步到真正的user表上，对user表的修改视图也会同步更新。
+
+### 检查选项
+
+```
+## 检查选项
+create view user_v1 as select id,username from user where id<20 with cascaded check option;
+insert into user_v1 value (30,'xiaoming');
+```
+
+此时的插入会失败，因为id30不满足创建view时where的限制条件。当使用WITH CHECK OPTION子句创建视图时,MySQL会通过视图检查正在更改的每个行,例如插入,更新,删除,以使其符合视图的定义。
+
+此外，MySQL允许基于另一个视图创建视图,新建视图还会检查依赖视图中的规则以保持一致性。为了确定检查的范围,mysql提供了两个选项:CASCADED 和LOCAL,默认值为 CASCADED。
+
+#### CASCADE
+
+```
+create or replace view user_v1 as select id,username from user where id<20;
+create view user_v2 as select id,username from user_v1 where id>10 with cascaded check option;
+
+## 失败：因为不满足v1要求
+insert into user_v2 value (30,'xiaoming');
+## 成功：因为下级不用考虑上级的约束
+insert into user_v1 value (5,'xiaoming');
+```
+
+CASCADE表示级联检查，对当前视图更新时，需要保证满足所有下级表的要求（哪怕下级表没有加check option）。如果当前表没加with check option，但是有下级表，也是需要满足下级表的要求。
+
+![alt text](../Java/pic/CASCADE.png)
+
+#### LOCAL
+
+![alt text](../Java/pic/LOCAL-CHECK.png)
+
+Local也需要进行递归检查，对当前视图更新时，需要检查下级表的要求：如果下级表没有加check option，则无需满足下级表的要求；如果有则必须满足其要求。如果当前表没加with check option，但是有下级表，也是需要按照上述规则对下级表的要求进行检查。
+
+### 视图更新要求
+
+要使视图可更新,视图中的行与基础表中的行之间必须存在一对一的关系。如果视图包含以下任何一项,则该视图不可更新:
+
+1. 聚合函数或窗口函数(SUM()、MIN()、MAX()、COUNT()等)
+2. DISTINCT
+3. GROUP BY
+4. HAVING
+5. UNION 或者 UNION ALL
+
+### 视图的作用
+
+
+1. 简化操作：通过视图将一些数据抽象出来后，可以直接对视图进行操作
+
+2. 安全：数据库可以授权,但不能授权到数据库特定行和特定的列上，只能进行到表上。通过创建视图，然后授权用户可以看到哪个视图，从而进行更细致的授权。（例如创建视图只显示学生的基本信息，而不显示账号密码）
+
+3. 数据独立：视图可帮助屏蔽真实表结构变化带来的影响。（例如真实表的列名修改，我们只需要修改创建视图的语句即可，前端看到的视图不变化）
