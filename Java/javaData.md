@@ -50,6 +50,9 @@ public static void main(String[] args) throws Exception {
 ````
 
 ### Collection的遍历方式
+
+下述使用的iterator，增强for循环，和forEach，都是因为Collection本身实现了Iterable<E>接口。
+
 1. 迭代器
 ````
 public static void iterate(){
@@ -98,6 +101,53 @@ public static void iterate(){
     });
 }
 ````
+
+### Collection遍历时增删元素带来的问题
+
+```
+public static void main(String[] args) {
+    LinkedList<Integer> list = new LinkedList<>();
+    list.add(1);
+    list.add(2);
+    list.add(3);
+    // 1. 增强for循环中增删collection会报错：ConcurrentModificationException
+//        for (int li:list){
+//            list.add(9);
+//        }
+
+    // 2.1 使用iterator和iterator.remove可以正常删除（iterator只有remove,没有add）
+    // 2.2 使用iterator遍历，但是直接对list进行增改则会报错：ConcurrentModificationException
+//        Iterator<Integer> iterator = list.iterator();
+//        while (iterator.hasNext()) {
+//            int element = iterator.next();
+//            list.remove(element);
+//        }
+
+    // 3. 使用forEach时增删也会报错：ConcurrentModificationException
+//        list.forEach(e->list.add(e));
+
+
+    // 3.1 普通for循环中增删元素元素会立即修改list，从而导致list.size()实时改变进入死循环
+    // 同理，list.remove(i)也会定位错目标
+//        for (int i = 0; i < list.size(); i++) {
+//            list.add(9);
+//        }
+
+    System.out.println(">>>>>>>>>>>>>");
+    for (int li:list){
+        System.out.println(li);
+    }
+}
+```
+
+其中增强for循环，forEach和iterator的问题是相同的：ConcurrentModificationException。其原因是在使用这三种方法遍历时，本质上都是通过iterator来操作list。而遍历是直接对collection本身进行修改，相当于iterator和main线程两者同时操作List，从而出现并发问题。
+
+而for-i循环的问题更简单，对collection修改会立刻生效，导致collection.size()和索引i对应的值跟预期不同而已。
+
+解决方法：
+1. 创建另一个list来避免多线程操作同一个list
+2. 使用JUC提供的CopyOnWriteList，其允许iterator和main线程同时修改
+
 ### Collections 工具类
 ````
 public static void main(String[] args){

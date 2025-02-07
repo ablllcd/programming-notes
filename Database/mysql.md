@@ -664,3 +664,126 @@ Local也需要进行递归检查，对当前视图更新时，需要检查下级
 2. 安全：数据库可以授权,但不能授权到数据库特定行和特定的列上，只能进行到表上。通过创建视图，然后授权用户可以看到哪个视图，从而进行更细致的授权。（例如创建视图只显示学生的基本信息，而不显示账号密码）
 
 3. 数据独立：视图可帮助屏蔽真实表结构变化带来的影响。（例如真实表的列名修改，我们只需要修改创建视图的语句即可，前端看到的视图不变化）
+
+## 存储过程
+
+存储过程是事先经过编译并存储在数据库中的一段SQL语句的集合,调用存储过程就会执行这些SQL语句。从而简化应用开发人员的工作,并减少数据在数据库和应用服务器之间的网络传输。（不需要多次通过网络执行SQL语句）
+
+存储过程思想上很简单,就是数据库SQL语言层面的代码封装与重用。
+
+### 基本使用
+
+```
+## 创建
+create procedure p1()
+begin
+    select count(*) from user;
+end;
+
+## 调用
+call p1();
+
+## 删除
+drop procedure p1;
+```
+
+注意：命令行中创建procedure时，其中使用了多个';'，导致命令行在遇到第一个';'时就认为输入结束了。为此需要使用delimiter来修改结束符。
+
+### 变量
+
+#### 系统变量
+
+系统变量是MySQL服务器提供,不是用户定义的,属于服务器层面。分为全局变量(GLOBAL)、会话变量(SESSION)。
+
+```
+## 查看系统变量，默认为session级别
+show global variables ;
+show session variables ;
+
+## 模糊搜索
+show variables like 'auto%';
+
+## 查看具体变量
+select @@autocommit;
+
+## 修改系统变量
+set @@session.autocommit=0;
+```
+
+#### 用户变量
+
+用户定义变量是用户根据需要自己定义的变量。用户变量不用提前声明,在用的时候直接用“@变量名”使用就可以，其作用域为当前连接。
+
+```
+## 直接赋值
+set @myName = 'cain';
+set @myAge := 22;
+
+## 查询后赋值，每个变量只能存储一个值，无法存储数组
+select count(*) into @myCount from user;
+
+## 使用用户变量
+select @myName,@myCount,@myUsers;
+```
+
+#### 局部变量
+
+局部变量 是根据需要定义的在局部生效的变量,访问之前,需要DECLARE声明。局部变量的范围是在其内声明的BEGIN ... END块。
+
+```
+create procedure p1()
+begin
+    ## 声明
+    declare user_count int default 0;
+    ## 赋值
+    select count(*) into user_count from user;
+    ## 使用
+    select user_count;
+end;
+
+call p1();
+```
+
+### 循环&判断
+
+有点无聊，具体用到在查吧。
+
+### 输入输出参数
+
+* IN: 该类参数作为输入,也就是需要调用时传入值
+* OUT: 该类参数作为输出,也就是该参数可以作为返回值
+* INOUT: 既可以作为输入参数,也可以作为输出参数
+
+```
+create procedure p1(in score int, out result varchar(10))
+begin
+    if score<60 then
+        set result:='不及格';
+    else
+        set result:='及格';
+    end if;
+end;
+
+call p1(70,@my_result);
+select @my_result;
+```
+### 存储函数
+
+存储函数是有返回值的存储过程，且存储函数的参数只能是IN类型的。（其实就是另一种格式的存储过程，没啥区别）
+
+具体语法如下:
+```
+CREATE FUNCTION 存储函数名称([参数列表])
+RETURNS typb [characteristic ... ]
+BEGIN
+
+-- SQL语句
+RETURN ...;
+
+END ;
+
+characteristic说明:
+· DETERMINISTIC:相同的输入参数总是产生相同的结果
+· NO SQL:不包含SQL语句。
+· READS SQL DATA:包含读取数据的语句,但不包含写入数据的语句。
+```
