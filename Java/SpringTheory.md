@@ -1,30 +1,35 @@
-## 大概思路
+## Spring容器的启动流程
 
-例如Spring通过new AnnotationConfigApplicationContext(Config.class)作为IOC容器。那么所有的起点就是ApplicationContext的构造方法。
+https://open8gu.com/framework/spring/kvy93gg3n2lyfkgd/
 
-### 构造方法
+### 三级缓存
 
-总体来说，构造方法里干两件事：扫描bean class并创建beanDefinition；创建单例bean.
+* 一级缓存：存放创建好的bean
+* 二级缓存：存放提前创建的bean
+* 三级缓存：存放objectFactory（其用来生成bean或者bean代理）
 
-1. 在构造方法中，首先ApplicationContext(实际上应该是BeanFactory)通过反射读取配置类中的@ComponentScan的值，从而判断哪些类文件需要进行检查。然后将被@Component注解标识的类筛选出来
-2. 找到bean class后通过类加载器将这些类加载，为其构造beanDefinition并存储到beanDefinition池中（Map）。beanDefinition至少存储该bean的scope和type。此外，当判断出该bean class为单例时，创建该bean的实例并且存储到单例池中（Map）。
+**核心思路**：
 
-### getBean方法
+* 场景：A依赖于B，B也依赖于A
+* 回顾：bean的生命周期包含：创建实例-依赖注入-初始化-摧毁
 
-IOC容器的核心方法就是获取bean。当构造方法结束，所有的bean都有对应的beanDefinition，并且单例bean已经生成了实例。
+1. A先开始创建，A创建实例后，添加A的objectFactory到第三级缓存
+2. A进行依赖注入时要用B，发现B不存在，进入B的创建过程
+3. B创建实例后，添加B的objectFactory到第三级缓存
+4. B进行依赖注入时要用A，在第三级缓存中发现A，则调用objectFactory(A)的getObject方法来获取A实例。此时objectFactory(A)根据A的情况创建A的实例或者代理对象。在创建出A bean或者A proxy后，将其放入第二级缓存，并删除第三级缓存的objectFactory(A)
+5. B完成创建后，将B放入到第一级缓存返回到A的创建流程。
+6. A完成了依赖注入后，继续进行初始化
+7. 最后A检查第二级缓存来判断A在依赖注入过程中是否发生了循环依赖。由于第二级缓存中有A bean或A proxy，A明白发生了循环依赖。于是A将二级缓存中的A bean或A proxy作为最后返回的bean
+8. A完成创建并放入第一级缓存。
 
-那当getBean方法被调用时，有两种情况：
 
-1. 单例则从单例池中返回
-2. 多例则创建bean并且返回
-
-
+具体还是要看： https://open8gu.com/framework/spring/am1bw8528v9xdtut/
 
 ## beanFactory讲解
 
 以下代码是beanFactory的使用示例：
 
-```
+```java
 package com.cain.springtheory;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -142,7 +147,7 @@ beanFactory只是充当基础的bean容器。
 ApplicationContext内部包含beanFactory，并且做了一些额外的工作来使用beanFactory。
 
 ApplicationContext有很多实现：
-```
+```java
 package com.cain.springtheory;
 
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -288,7 +293,7 @@ beans.xml
 
 ### ClassPathXmlApplicationContext实现过程
 
-```
+```java
 //创建bean容器
 DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
 
@@ -306,7 +311,7 @@ for (String beanName : beanFactory.getBeanDefinitionNames()) {
 
 ## bean的生命周期
 
-```
+```java
 package com.cain.springtheory.lifecycle;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -346,7 +351,7 @@ bean的生命周期为：构造实例->依赖注入->初始化->销毁
 
 bean的创建除了要经过自己的生命周期外，还会经过后处理器类。后处理器会作用于所有bean的创建，其方法包括：
 
-```
+```java
 package com.cain.springtheory.lifecycle;
 
 import org.springframework.beans.BeansException;
@@ -413,7 +418,7 @@ public class MyPostProcessor implements InstantiationAwareBeanPostProcessor, Des
 
 spring将后处理器和bean生命周期的组合依赖于一个思想：模板方法。下边是一个简易的模拟流程：
 
-```
+```java
 package com.cain.springtheory.lifecycle;
 
 
@@ -467,7 +472,7 @@ public class TemplateMethodTest {
 
 
 ## 常见Bean后处理器
-```
+```java
 package com.cain.springtheory.postprocessor;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -552,12 +557,12 @@ class Bean3{}
 1. AutowiredAnnotationBeanPostProcessor：负责处理@Autowired和@Value注解
 2. CommonAnnotationBeanPostProcessor：负责处理@Resource @PostConstruct @PreDestroy注解
 
-前边讲bean的生命周期时，将后处理器方法和生命周期方法分开讲解，好像是两者独立。而现在看来，bean的生命周期方法本身也是依赖于后处理器的。
+前边讲bean的生命周期时，将后处理器方法和生命周期方法分开讲解，好像是两者独立。而现在看来，bean的生命周期方法本身也是依赖于后处理器的。(@Autowired属于声明周期的依赖注入，但是@Autowired注解需要beanPostProcessor来处理)
 
 
 ### AutowiredAnnotationBeanPostProcessor分析
 
-```
+```java
 public class AutowiredProcessorStudy {
     public static void main(String[] args) {
         // 创建beanFactory，添加bean2, bean3并且配置@Value相关的解析器
@@ -585,7 +590,7 @@ public class AutowiredProcessorStudy {
 此外，这里的后处理器需要绑定beanFactory是因为解析@Autowired时需要进行依赖注入，而依赖注入需要IOC容器。
 
 postProcessProperties源码：
-```
+```java
 public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, String beanName) {
     InjectionMetadata metadata = this.findAutowiringMetadata(beanName, bean.getClass(), pvs);
 
@@ -606,7 +611,7 @@ public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, Str
 1. findAutowiringMetadata来读取该bean类中有哪些方法和字段被@Autowired标记了。
 2. metadata.inject 对被注解的方法和字段进行依赖注入即可。在上一步中已经得到Method或者Field了，那么很容易得到需要注入的bean的类型，根据类型在IOC容器中进行查找即可。
 
-    ```
+    ```java
     // 根据findAutowiringMetadata()方法的返回值可以获得Field
     Field bean3Filed = Bean1.class.getField("bean3");
     // 封装为DependencyDescriptor
@@ -618,7 +623,7 @@ public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, Str
 
 ## 常见beanFactory后处理器
 
-```
+```java
 package com.cain.springtheory.beanFactoryPostProcessor;
 
 import org.mybatis.spring.mapper.MapperScannerConfigurer;
@@ -648,11 +653,13 @@ public class ApplicationContext {
 1. ConfigurationClassPostProcessor：处理@ComponentScan @Bean等注解
 2. MapperScannerConfigurer: 根据basepackage处理mapper接口
 
+beanFactory后处理器负责添加bean到beanFactory中；而bean后处理器是负责处理bean本身的。
+
 ### @ComponentScan分析
 
 对于ConfigurationClassPostProcessor中对@ComponentScan注解的处理，我们用以下代码进行了模拟：
 
-```
+```java
 public static void componentScanSimulation() throws IOException {
     GenericApplicationContext context = new GenericApplicationContext();
 
@@ -700,7 +707,7 @@ public static void componentScanSimulation() throws IOException {
 
 ### @Bean分析
 
-```
+```java
 GenericApplicationContext context = new GenericApplicationContext();
 
 CachingMetadataReaderFactory readerFactory = new CachingMetadataReaderFactory();
@@ -726,7 +733,7 @@ for (MethodMetadata annotatedMethod : metadataReader.getAnnotationMetadata().get
 
 ### Mapper分析
 
-```
+```java
 public static void mapperSimulation() throws IOException {
     GenericApplicationContext context = new GenericApplicationContext();
 
@@ -767,7 +774,7 @@ public static void mapperSimulation() throws IOException {
 
 自己写的bean还可以实现各种Aware接口，这些接口用来提供回调函数。回调函数会在bean被创建时由Spring调用，调用时相关参数也会被传进回调函数。
 
-```
+```java
 public class Bean1 implements BeanNameAware, BeanFactoryAware, InitializingBean{
     @Override
     public void afterPropertiesSet() throws Exception {
@@ -793,7 +800,7 @@ public class Bean1 implements BeanNameAware, BeanFactoryAware, InitializingBean{
 
 然而，这些功能也可以通过其它注解来实现，例如如果我们想得到BeanFactory，我们可以通过@Autowired注解来获得；对于InitializingBean，也可以使用@PostConstruct注解
 
-```
+```java
 @Autowired
 public void fetchBeanFactory(BeanFactory beanFactory){
     System.out.println("Use @Autowired to get "+beanFactory);
@@ -810,7 +817,7 @@ public void postConstruct(){
 ## 后处理器，回调函数等执行流程
 
 首先看一个@Autowired失效的例子：
-```
+```java
 public class A06ApplicationContext {
     public static void main(String[] args) {
         GenericApplicationContext context = new GenericApplicationContext();
@@ -864,7 +871,7 @@ public class Config1 {
 
 ## 初始化和摧毁方法
 
-```
+```java
 @SpringBootApplication
 public class A07ApplicationContext {
     public static void main(String[] args) {
@@ -928,7 +935,7 @@ Bean的Scope有5种：
 5. application: 一个应用创建一个实例
 
 示例：
-```
+```java
 @Component
 @Scope("request")
 public class RequestBean {
@@ -970,7 +977,7 @@ public class HelloController {
 
 **多例对象注入单例，会导致多例失效**
 
-```
+```java
 @ComponentScan("com.cain.springtheory.ScopeStudy")
 public class A09ApplicationContext {
     public static void main(String[] args) {
@@ -1011,7 +1018,7 @@ class F1{
 两者的原理都是相同的，即为多例F1创建代理对象进行依赖注入，而每次调用F1的方法时，代理对象每次都会创建一个新的F1对象，实现多例的效果。
 
 3. 使用ObjectFactory，直接依赖注入ObjectFactory，每次使用F1从工厂创建即可
-   ```
+   ```java
     @Autowired
     private ObjectFactory<F1> f1Factory;
 
@@ -1021,7 +1028,7 @@ class F1{
    ```
 
 4. 使用ApplicationContext
-   ```
+   ```java
     @Autowired
     private ApplicationContext applicationContext;
 
@@ -1033,7 +1040,7 @@ class F1{
 ## AOP 
 
 通常AOP的实现是通过动态代理的：
-```
+```java
 @SpringBootApplication
 public class A09ApplicationContext {
     public static void main(String[] args) {

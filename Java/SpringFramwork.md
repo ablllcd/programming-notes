@@ -110,7 +110,7 @@ User user = (User) applicationContext.getBean(PersonInterface.class);
 
 ### 依赖注入
 
-BeanFactory创建类默认用无参构造，依赖注入允许beanfactory创建对象的时候为其赋值。*（不过写死到配置文件中有什么用？）*
+BeanFactory创建类默认用无参构造，但依赖注入允许beanfactory创建对象的时候为其赋值。
 
 **1. 通过setter**
 
@@ -974,7 +974,7 @@ rollback
 #### Read Commited 读已提交
 
 ```sql
--- 1. 事务1修改money为50，但是为提交
+-- 1. 事务1修改money为50，但是未提交
 start transaction;
 update user set money=50 where username='cain';
 -- 3. 事务1提交

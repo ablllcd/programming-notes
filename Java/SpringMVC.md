@@ -528,7 +528,7 @@ public class DispatcherServletConfig implements WebMvcConfigurer {
 
 ## HttpMessageConverter
 
-HttpMessageConver是Spring框架提供的一个类，用来进行http报文和java对象之间的转换。它的功能通过httpRequest和response都能实现，只是它更加方便一些：
+HttpMessageConverter是Spring框架提供的一个类，用来进行http报文和java对象之间的转换。它的功能通过httpRequest和response都能实现，只是它更加方便一些：
 
 ### @RequestBody
 

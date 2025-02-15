@@ -186,7 +186,7 @@ java -jar hello.jar
 例如我们要实现一个计算器类，核心业务为计算功能，非核心业务为“在调用前打印一下”
 
 接口
-```
+```java
 public interface UserService {
     public void select();   
     public void update();
@@ -195,7 +195,7 @@ public interface UserService {
 ```
 
 目标类
-```
+```java
 public class UserServiceImpl implements UserService {  
     public void select() {  
         System.out.println("查询 selectById");
@@ -207,7 +207,7 @@ public class UserServiceImpl implements UserService {
 ```
 
 代理类
-```
+```java
 public class UserServiceProxy implements UserService {
     private UserService target; // 被代理的对象
 
@@ -250,7 +250,7 @@ JDK动态代理主要依赖java.lang.reflect.Proxy类，它有一个方法可以
     ```
 
 2. 创建Handler类要继承InvocationHandler
-   ```
+   ```java
    public class LogHandler implements InvocationHandler {
         Object target;
 
@@ -277,7 +277,7 @@ JDK动态代理主要依赖java.lang.reflect.Proxy类，它有一个方法可以
    ```
 
 3. 根据目标类和代理（InvocationHandler）来创建代理类
-   ```
+   ```java
        public static void main(String[] args) throws IllegalAccessException, InstantiationException {
         // 1. 创建被代理的对象，UserService接口的实现类
         UserServiceImp userServiceImpl = new UserServiceImp();
@@ -317,7 +317,7 @@ InvocationHandler：描述代理对象应该做的事。
 
 **生成的代理类**：
 
-```
+```java
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -414,7 +414,7 @@ CGLib实现动态代理的原理是：直接对需要代理的类的字节码进
     </dependency>
     ```
 2. 写目标类
-   ```
+   ```java
    public class UserDao {
         public void select(){
             System.out.println("select 查询");
@@ -427,7 +427,7 @@ CGLib实现动态代理的原理是：直接对需要代理的类的字节码进
    ```
 
 3. 写代理逻辑
-    ```
+    ```java
     import net.sf.cglib.proxy.MethodInterceptor;
     import net.sf.cglib.proxy.MethodProxy;
     import java.util.Date;
@@ -452,7 +452,7 @@ CGLib实现动态代理的原理是：直接对需要代理的类的字节码进
     ```
 
 4. 构建代理类
-    ```
+    ```java
     public static void main(String[] args) {
         Enhancer enhancer = new Enhancer();
         // 设置目标类
