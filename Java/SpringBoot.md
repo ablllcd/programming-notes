@@ -23,6 +23,8 @@ SpringBoot就是来负责`简化Spring项目构建`的框架，它有以下特�
 
 ## POM文件讲解
 
+### 创建SpringBoot项目的两者方式
+
 **1. Parent 标签**
 
 ```
@@ -36,7 +38,29 @@ SpringBoot就是来负责`简化Spring项目构建`的框架，它有以下特�
 
 这里是通过指明父工程来进行项目依赖的版本管理，在父工程中指明了版本的依赖都不需要再声明版本号。
 
-**2. starter依赖包**
+**2. 使用dependencyManagement**
+```
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>cn.zhuoqianmingyue</groupId>
+  <artifactId>shop</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+   <dependencyManagement>
+		<dependencies>
+            <dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-dependencies</artifactId>
+				<version>1.4.7.RELEASE</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+</project>
+
+```
+
+### starter依赖包
 
 ```
 <dependency>

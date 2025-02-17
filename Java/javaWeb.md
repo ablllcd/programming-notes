@@ -400,6 +400,7 @@ public class CookieDemo2 extends HttpServlet {
 1. cookie存储数据在客户端浏览器（意味着容易丢失和篡改，不安全）
 
 2. 浏览器对于单个cookie 的大小有限制(4kb)以及 对同一个域名下的总cookie数量也有限制(20个)
+3. 移动端app不支持
 
 * 使用场景
   1. cookie一般用于存出少量的不太敏感的数据
@@ -489,3 +490,32 @@ Session可以分为两部分:
 1. Session的数据存储在服务端
 2. Session对存储内容的大小和类型没有限制
 3. Session相对更安全
+
+## 令牌
+
+第一次连接时，服务器创建令牌并交给浏览器，浏览器存储令牌，并在会话中的每次请求使用令牌。
+
+#### Json Web Token (JWT令牌)
+
+![Alt text](pic/jwt.png)
+
+令牌和cookie差不多，但是使用了签名技术，从而保证客户端无法对其修改。此外令牌技术并不依赖cookie，所以在移动端也可以使用。
+
+从图中也可以看出，令牌只是单纯的字符串，并不依赖cookie或者其它机制，完全是自实现的。
+
+注意：http 协议的header是可以自定义字段的。所以当用户登录成功并且获取jwt后，客户端可以自己决定如何存储jwt，只要在之后的请求中，在header添加自定义的字段来传输jwt即可。
+
+````java
+public class JWT {
+    private static SecretKey key = Jwts.SIG.HS256.key().build();
+
+    public static String generateJWT(Map<String,Object> load){
+        String jwt = Jwts.builder().claims(load).signWith(key).compact();
+        return jwt;
+    }
+
+    public static Map<String,Object> parsarJWT(String jwt){
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(jwt).getPayload();
+    }
+}
+````
