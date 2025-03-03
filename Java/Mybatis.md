@@ -119,7 +119,7 @@ public class Employee {
 
 **5. 创建测试类**
 
-```
+```java
 public class EmployeeTest {
     private SqlSession sqlSession;
 
@@ -213,7 +213,7 @@ public List<Employee> getAllUsers();
 
 接口中方法的参数被mybatis存储在map中，**默认键值对**为arg0,arg1,param1,param2。
 
-```
+```java
 public Employee getByNameAndAge(String name,int age);
 ```
 
@@ -419,7 +419,7 @@ public Map<String,Object> getAllUsers();
     ```
     resultMap对于查询到的每一行，除了根据名称赋值外，还将dept_id作为参数调用org.example.mapper.DeptMapper.getDeptByID方法，其返回的Dept类型直接赋值给employee的dept。
 
-    分步查询的主要用途为`延迟加载`，例如开启延迟加载后，调用getAllEmps获取的Emp列表并没有Dept对象，只有真的用到的时候才会执行association里的sql语句（也就是分布查询才允许延迟加载这种优化）。
+    分步查询的主要用途为`延迟加载`，例如开启延迟加载后，调用getAllEmps获取的Emp列表并没有Dept对象，只有真的用到的时候才会执行association里的sql语句（也就是分步查询才允许延迟加载这种优化）。
 
     ```
     <association property="department"
@@ -586,8 +586,6 @@ sqlSession = sqlSessionFactory.openSession(true);
 ### Mapper注解
 
 被@Mapper注解标记的接口会被自动实现
-
-todo:为什么
 
 ### 增加
 ````

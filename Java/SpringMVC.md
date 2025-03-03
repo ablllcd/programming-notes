@@ -699,7 +699,7 @@ Interceptor类
 
 (2) postHandle：对请求放行后这个函数才调用，如果preHandle返回false，该函数不调用。该函数负责Controller处理后继续进行逻辑处理
 
-(3) afterCompletion：我也不知道
+(3) afterCompletion：处理完视图和模型数据，渲染视图完毕之后执行afterComplation。（如果preHandler为false，该方法也不会执行）
 
 ````java
 @Component
