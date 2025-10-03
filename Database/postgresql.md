@@ -1,3 +1,18 @@
+# PostgreSQL 概念解释
+
+## 登录
+ 
+### Peer Authentication
+PostgreSQL 默认使用 Peer Authentication（对本地连接进行用户身份验证），它要求：Linux 系统用户名必须与 PostgreSQL 数据库用户名一致。
+
+为了避免每次连接都需要指定用户名，可以通过以下两种方式解决：
+1. 使用 `sudo -i -u postgres` 切换到 `postgres` 用户，然后直接运行 `psql` 连接数据库。
+2. 修改 `pg_hba.conf` 文件，将本地连接的认证方式改为 `md5`，然后重启 PostgreSQL 服务。这样可以使用任何数据库用户进行连接，但需要提供密码。
+
+## 数据库
+
+* 每个数据库必需有一个所有者（owner），通常是创建数据库的用户。
+
 # PostgreSQL 基本操作指南
 
 ## 0 连接数据库
@@ -36,6 +51,17 @@ SELECT current_user;
 -- 查看详细连接信息
 \conninfo
 ```
+
+### 1.3 数据库的Owner操作
+
+```sql
+-- 查看数据库owner
+SELECT datname, pg_catalog.pg_get_userbyid(datdba) AS owner FROM pg_database;
+
+-- 修改数据库owner
+ALTER DATABASE database_name OWNER TO new_owner;
+```
+
 
 ## 2. 表操作
 
@@ -216,6 +242,11 @@ pg_dump -t table_name database_name > table_backup.sql
 psql database_name < backup.sql
 ```
 
+```bash
+# 加载tar文件到当前数据库
+pg_restore -U username -d database_name /path/to/backup.tar
+```
+
 ## 9. 事务操作
 
 ### 9.1 基本事务
@@ -307,3 +338,38 @@ EXPLAIN SELECT * FROM table_name WHERE condition;
 5. 合理使用约束来保证数据完整性
 6. 使用视图来简化复杂查询
 7. 注意权限管理，遵循最小权限原则
+
+# PostgreSQL 安装
+
+## Linux上安装
+
+1. 更新包列表
+   ```bash
+   sudo apt update
+   ```
+2. 安装 PostgreSQL
+   ```bash
+    sudo apt install postgresql postgresql-contrib
+    ```
+3. 启动 PostgreSQL 服务
+    ```bash
+    sudo systemctl start postgresql
+    ```
+4. 连接到 PostgreSQL
+    ```bash
+    sudo -i -u postgres     # 切换到 postgres 用户（默认超级用户）
+    psql
+    ```
+5. 创建新用户和数据库
+    ```sql
+    CREATE USER myuser WITH PASSWORD 'mypassword';
+    CREATE DATABASE mydb OWNER myuser;
+    ```
+6. 退出 psql
+    ```sql
+    \q
+    ```
+7. 退出 postgres 用户
+    ```bash
+    exit
+    ```

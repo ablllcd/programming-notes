@@ -38,6 +38,22 @@ https://www.runoob.com/linux/linux-shell.html
      date -u -d @<timestamp> +"%Y-%m-%dT%H:%M:%SZ"
     ```
 
+### systemctl
+systemctl 是 Linux 系统中用于 控制 systemd 系统和服务管理器 的命令行工具。而systemd 是一种初始化系统（init system），负责在系统启动时启动服务、挂载文件系统、管理日志等。systemctl 就是与 systemd 交互的工具。
+
+通过 systemctl 管理的服务是系统服务（daemon），通常在后台运行，提供持续的功能，比如数据库、Web 服务器、网络服务等。
+其特点为：
+* 后台运行
+* 需要系统启动时自动启动
+* 由 systemd 管理生命周期（启动、停止、重启等）
+
+**常用命令**
+```bash
+sudo systemctl start service_name    # 启动服务
+sudo systemctl stop service_name     # 停止服务
+sudo systemctl restart service_name  # 重启服务
+```
+
 ## 磁盘操作
 
 ### 查看磁盘用量

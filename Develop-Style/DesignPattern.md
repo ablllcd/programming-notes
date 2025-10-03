@@ -1,3 +1,7 @@
+# 推荐资料
+
+1. https://refactoringguru.cn/design-patterns/factory-method
+
 ## 什么是设计模式
 
 针对常见问题的通用解决方案，旨在降低对象之间的耦合，增加代码的复用性
