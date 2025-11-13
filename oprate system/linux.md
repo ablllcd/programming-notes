@@ -197,6 +197,17 @@ ip link show      # 显示网络接口的状态
     fuser -n tcp port  # 查看指定TCP端口的占用情况
     ```
 
+### 查看网卡信息
+```bash
+ip a # 显示所有网络接口信息
+ip a | grep TARGET_IP # 查找包含指定IP地址的网络接口信息
+```
+
+### 网络抓包
+```bash
+sudo tcpdump -i eth0  -w capture.pcap  # 在eth0接口上抓包并保存到capture.pcap文件
+```
+
 ## 进程操作
 
 ### 查看进程以及资源占用
@@ -239,6 +250,21 @@ ip link show      # 显示网络接口的状态
 7. `pmap` 命令 - 显示进程的内存映射
     ```bash
     pmap pid      # 查看指定进程的内存使用情况
+    ```
+
+### 查找进程
+1. 根据端口号查找进程
+    ```bash
+    lsof -i :port  # 查找占用指定端口的进程
+    netstat -tulpn | grep :port  # 查找占用指定端口的进程
+    ss -tuln | grep :port  # 查找占用指定端口的进程
+    ```
+
+### 终止进程
+1. 使用 `kill` 命令终止进程
+    ```bash
+    kill pid              # 发送默认的TERM信号终止进程
+    kill -9 pid           # 强制终止进程
     ```
 
 ## 下载操作
