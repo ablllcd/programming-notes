@@ -1,12 +1,3 @@
-# 简介
-docker是一个类似虚拟机的程序，它可以创建很多容器（contianer），每个容器都是独立的虚拟环境，可以在其中安装程序并运行。
-
-此外，docker还有一个重要的概念：镜像(image)。镜像是一个静态模板，它包含了应用程序和程序依赖的环境。我们可以从一个镜像中创建一个容器来布置其指定的环境并运行程序。
-
-Docker也有自己的仓库来储存镜像。
-
-Docker分别提供了GUI和命令行来允许用户使用。
-
 # 安装
 
 DOCKER官网有关于WINDOWS下安装的教程
@@ -20,7 +11,18 @@ wsl --install
 
 2. 从官网下载docker安装器进行安装即可
 
-# 命令
+
+# 理论
+## 简介
+docker是一个类似虚拟机的程序，它可以创建很多容器（contianer），每个容器都是独立的虚拟环境，可以在其中安装程序并运行。
+
+此外，docker还有一个重要的概念：镜像(image)。镜像是一个静态模板，它包含了应用程序和程序依赖的环境。我们可以从一个镜像中创建一个容器来布置其指定的环境并运行程序。
+
+Docker也有自己的仓库来储存镜像。
+
+Docker分别提供了GUI和命令行来允许用户使用。
+
+# 基本操作
 ## 镜像操作
 ````
 // 查看镜像
@@ -36,24 +38,32 @@ docker load -i [inputPath]
 ````
 
 ## 容器操作
-````
-// 查看容器
+
+### 查看容器
+```
 docker ps   // 只查看已激活的
-docker ps -a
+docker ps -a  //查看所有容器
+docker logs [container] //查看容器日志
+```
 
-// 查看容器日志
-docker logs [container]
-
-//创建 删除 容器
-docker run --name contianerName imageName image并运行
+### 创建/删除/启动/停止容器
+```
+docker run --name contianerName imageName  // 创建并启动一个容器
+docker start container  //启动已存在的容器
 docker rm  contianer    //删除container
+docker stop container   //停止container
+docker kill container   //强制停止
+```
 
-//容器开关
-docker start container
-docker stop container
-docker kill container //强制停止
+#### 启动/创建时的常见参数
+```
+-d  // 后台运行
+-p [hostPort]:[containerPort]  // 端口映射
+-v [hostPath]:[containerPath]  // 目录映射
+--network [NetName]  // 指定网络
+--env [key]=[value]  // 设置环境变量
+```
 
-````
 ### 进入容器
 
 ```bash
