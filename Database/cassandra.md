@@ -117,6 +117,42 @@ Cassandra 使用 CQL（Cassandra Query Language）进行数据操作，语法类
 
 其实这也是因为NOSQL使用不同的数据模型，对应的查询能力也不同。总体来说：关系型数据库擅长复杂查询和事务分析，NoSQL 更适合简单、高速查询和分布式场景，但在 JOIN 和复杂聚合上能力有限。
 
+## Cassandra 架构
+
+TODO:分布式架构，等用到了再看。
+
+## Cassandra 数据模型
+
+Cassandra 使用Column-Family(列族) 数据模型，类似于关系型数据库的表格结构，但更灵活。主要概念包括： Keyspace（键空间）、Column-Family（表）、Row（行）、Column（列）等。
+
+* Keyspace（键空间）：类似于关系型数据库的数据库，定义数据的复制策略。
+* Column-Family（表）：存储数据的结构，类似于关系型数据库的表。
+* Row（行）：表中的一条记录，由一个唯一的分区键标识。
+* Column（列）：行中的数据字段，也是最小数据存储单元，包含（列名、值、时间戳）。
+
+### 整体结构
+
+![alt text](cassandraPIC/keyspace.jpg)
+
+最外层是 Keyspace，类似于关系型数据库的数据库。每个 Keyspace 包含多个 Column-Family（表）。
+
+其中Keyspace可以定义数据的复制因子和副本放置策略：
+* 复制因子： 指定数据在集群中复制的节点数。例如，复制因子为3表示每条数据会存储在3个不同的节点上，以提高容错性和可用性。
+* 副本放置策略： 定义数据副本在集群中的分布方式。
+
+每个Keyspace下包含多个 Column-Family（表），其中每个Column Family可以类别RDBMS中的表,其结构如下：
+
+![alt text](cassandraPIC/cassandra_column_family.jpg)
+
+Column-Family（表）包含多行（Row），每行由一个唯一的分区键（Partition Key）标识。每行包含多个列（Column），每列由列名、值和时间戳组成:
+
+* 分区键（Partition Key）： 决定数据分布到哪个节点的键。Cassandra 根据分区键的哈希值将数据分布到集群中的不同节点。它是由一个或多个列组成的复合键。
+* 列（Column）： 行中的数据字段，也是最小数据存储单元。每列包含以下三个部分：
+    * 列名（Column Name）： 列的标识符，可以是字符串或其他数据类型。
+    * 值（Value）： 列存储的实际数据，可以是各种数据类型，如字符串、整数、布尔值等。
+    * 时间戳（Timestamp）： 每列都有一个时间戳，用于记录该列最后一次更新的时间。Cassandra 使用时间戳来解决数据冲突，确保最新的数据被保留。
+* 超级列（Super Column）： 是一种特殊的列，包含多个子列(column)。超级列用于实现更复杂的数据结构，但在现代 Cassandra 版本中不常用。
+
 # 使用
 ## 基本操作
 
