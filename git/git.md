@@ -151,6 +151,22 @@ git clean -dff  //强制删除被其它git管理的文件夹
 
 创建.gitignore，在文件中声明要忽略的文件，可以使用正则表达式。
 
+## 暂存操作
+
+### Stash
+当我们在工作区修改了一些文件，但是这些修改还不想提交，而此时又需要切换分支或者 pull 远程仓库的更新时，可以使用 stash 将当前的修改保存起来，等到需要的时候再恢复。
+
+```
+git stash          // 保存当前修改并恢复到上次提交的状态
+git stash save "message"  // 保存当前修改并添加描述信息
+git stash list    // 查看所有保存的修改
+git stash apply   // 恢复最近一次保存的修改，但不删除 stash 记录
+git stash apply stash@{n}  // 恢复指定的修改
+git stash pop     // 恢复最近一次保存的修改，并删除该 stash 记录
+git stash drop stash@{n}  // 删除指定的 stash 记录
+git stash clear   // 删除所有的 stash 记录
+```
+
 ## 远程仓库
 
 ### git clone
