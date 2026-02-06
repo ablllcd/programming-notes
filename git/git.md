@@ -368,47 +368,41 @@ git checkout A -- .// 将分支A的内容拷贝到当前分支
 
 # 第三方软件
 ## github
-### 配置 SSH （还是有问题，暂且用 http 吧）
+### 配置 SSH 登录
 
-1. 首先生成 ssh 密钥对
+1. 生成 SSH 密码对
+    ```
+    ssh-keygen
+    ```
+    根据提示填写密钥名和存储位置即可
 
-```
-C:\Users\Cc>ssh-keygen -t rsa -b 4096
+2. 将公钥添加到 github 上
 
-    // 选择密钥保存的位置
-Enter file in which to save the key (C:\Users\Cc/.ssh/id_rsa): D:\Programming\Git\github-ssh-key
-```
+3. 配置 ssh，使用生成的私钥来访问目标 github 仓库
 
-2. 将生成的公钥（\*.pub）文件拷贝到 github 设置里的`SSH and GPG Keys`，选择 new SSH Key。
+    编辑 ~/.ssh/config 文件，添加如下内容：
 
-3. 配置私钥来匹配 github
+    ```
+    Host [Host别名]
+        HostName github.com         # github 地址
+        port 22                     # 端口号
+        User git                    # git服务的固定用户名
+        IdentityFile ~/.ssh/[私钥名称]  # 私钥路径
+    ```
 
-   首先查看 ssh-agent 服务是否开启：
+4. 测试连接
 
-   1. cmd + services.msc 后看 OpenSSH Authentication Agent，右击开启
+    ```
+    ssh -T git@[Host别名]
+    ```
 
-   2. 或者在 powershell 管理者模式中（不是命令行）
+    如果连接成功，会返回github的用户名
 
-   ```
-   Get-Service ssh*    //查看ssh-agent状态
-   Start-Service ssh-agent  //开启服务
-   ```
+5. 使用 ssh 地址来 clone 仓库
 
-   其次添加私钥到 agent 里
-
-   ```
-   ssh-add "D:\Programming\Git\github-SSHkey\github-ssh-key"
-
-   ssh-add -l  //查看已添加的私钥
-   ```
-
-   3. 测试私钥和公钥是否匹配
-
-   ```
-   ssh -T git@github.com
-   ```
-
-   补充内容：配置.ssh 文件无用，以及`ssh -i "C:\Users\john\.ssh\id_rsa" git@github.com`可以暂时连接密钥和网站，关闭命令行后失效。
+    ```
+    git clone git@[Host别名]:path/repository.git
+    ```
 
 ### quick start
 

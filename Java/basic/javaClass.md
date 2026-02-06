@@ -201,3 +201,43 @@ public class BoundaryStudy {
 # 接口
 
 详见： https://www.runoob.com/java/java-interfaces.html
+
+# Package
+
+Package是Java中用来组织类和接口的一种机制。Package可以防止命名冲突，并且可以控制访问权限，还能提高代码的可维护性。
+
+## Package的作用
+1. 命名空间管理：Package提供了一个命名空间，允许开发者在不同的Package中使用相同的类名而不会发生冲突。
+2. 访问控制：Package可以控制类和接口的访问权限。使用不同的访问修饰符（如public、protected、default和private）可以限制类成员的可见性。
+3. 代码组织：Package帮助开发者将相关的类和接口组织在一起，便于管理和维护代码。
+
+## 如何创建Package
+1. 声明Package：在Java源文件的第一行使用`package`关键字声明Package名称。例如：
+   ```java
+   package com.example.myapp.utilities;
+   ```
+
+2. 创建目录结构：根据Package名称创建相应的目录结构。例如，上述Package名称对应的目录结构为`com/example/myapp/utilities/`。
+
+3. 将Java源文件放入相应的目录中。
+
+## Package的声明和使用
+```java
+// 声明Package
+package com.example.myapp.utilities;
+public class Utility {
+    public static void printMessage(String message) {
+        System.out.println(message);
+    }
+}
+```
+
+```java
+// 使用Package
+import com.example.myapp.utilities.Utility;
+public class Main {
+    public static void main(String[] args) {
+        Utility.printMessage("Hello from Utility class!");
+    }
+}
+```

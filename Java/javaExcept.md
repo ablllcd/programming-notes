@@ -185,3 +185,39 @@ public class ExceptionTest {
     }
 }
 ```
+
+## 语法糖
+
+### try-with-resources
+
+```java
+public static void testTryWithResources() {
+    // 传统写法
+    BufferedReader br1 = null;
+    try {
+        br1 = new BufferedReader(new FileReader("test.txt"));
+        String line = br1.readLine();
+        System.out.println(line);
+    } catch (IOException e) {
+        e.printStackTrace();
+    } finally {
+        if (br1 != null) {
+            try {
+                br1.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // try-with-resources写法
+    try (BufferedReader br2 = new BufferedReader(new FileReader("test.txt"))) {
+        String line = br2.readLine();
+        System.out.println(line);
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+}
+```
+
+将`try(资源声明)`中的资源会在try代码块结束后自动关闭，无需在finally中手动关闭资源。资源必须实现`AutoCloseable`接口。

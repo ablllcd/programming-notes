@@ -1,3 +1,4 @@
+# React
 ## React 项目启动
 
 ```
@@ -323,20 +324,48 @@ export default function MyForm() {
 }
 ```
 
+# 交互
+
+## 按钮
+
+### 下载文件
+
+```javascript
+const downloadFile = (url, filename) => {
+  fetch(url)
+    .then((response) => response.blob())
+    .then((blob) => {
+      const link = document.createElement("a");
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      window.URL.revokeObjectURL(link.href);
+    })
+    .catch((error) => console.error("下载文件出错:", error));
+};
+```
+整体思路为：
+1. 点击按钮触发 downloadFile 方法
+2. 通过 API 获取文件内容，并将其转换为 Blob 对象
+3. 创建一个临时的 `<a>` 元素，设置其 href 属性为 Blob 对象的 URL，并设置 download 属性为文件名
+4. 触发`<a>` 元素的点击事件，开始下载
+5. 下载完成后，撤销 Blob 对象的 URL 以释放内存
+
+
 # Redux
 
-## 基本概念
+## 什么是 Redux
 
 Redux 是一个用于管理应用状态的 JavaScript 库，通常与 React 一起使用。它基于 Flux 架构，强调单一数据源和不可变状态。
 
-### 核心概念
+## 基本概念
 
 1. Store：存储应用的整个状态树。应用中只能有一个 Store。
 2. Action：描述发生了什么的普通 JavaScript 对象。每个 Action 都有一个 type 属性。
 3. Reducer：一个纯函数，接收当前状态和 Action，返回新的状态。
 4. Dispatch：发送 Action 的方法，用于触发状态更新。
 
-### 使用 Redux 的步骤
+## 基本用法
 
 1. 创建 Store：
 
@@ -404,6 +433,93 @@ ReactDOM.render(
   document.getElementById("root")
 );
 ```
+
+## hooks
+
+### useSelector
+
+useSelector 是 React-Redux 提供的一个 Hook，用于从 Redux Store 中选择和获取状态数据。它接受一个选择函数作为参数，该函数接收整个 Redux 状态树并返回所需的部分状态。
+
+```javascript
+import { useSelector } from "react-redux";
+const MyComponent = () => {
+  // 从 Redux Store 中选择 count 状态
+  const count = useSelector((state) => state.count);
+
+  return <div>Count: {count}</div>;
+};
+```
+
+在上述示例中，useSelector 使用一个选择函数 `(state) => state.count` 来获取 Redux Store 中的 `count` 状态。每当 `count` 状态发生变化时，组件会自动重新渲染以反映最新的状态。
+
+### useDispatch
+
+useDispatch 是 React-Redux 提供的一个 Hook，用于获取 Redux Store 的 dispatch 方法。通过 dispatch 方法，可以发送 Action 来触发状态更新。
+
+```javascript
+import { useDispatch } from "react-redux";
+const MyComponent = () => {
+  const dispatch = useDispatch();
+
+  const handleIncrement = () => {
+    dispatch({ type: "INCREMENT" });
+  };
+
+  return <button onClick={handleIncrement}>Increment</button>;
+};
+```
+
+在上述示例中，useDispatch 返回 Redux Store 的 dispatch 方法。通过调用 `dispatch({ type: "INCREMENT" })`，可以发送一个 Action 来触发状态更新。
+
+## toolkit
+
+### 什么是 Redux Toolkit
+
+Redux Toolkit 是官方推荐的 Redux 工具集，旨在简化 Redux 的使用。它提供了一组工具和最佳实践，帮助开发者更高效地编写 Redux 代码。
+
+### createSlice
+
+createSlice 是 Redux Toolkit 提供的一个函数，用于简化 Reducer 和 Action 的创建。它接受一个配置对象，包含 slice 的名称、初始状态和 reducers。
+
+```javascript
+import { createSlice } from "@reduxjs/toolkit";
+const counterSlice = createSlice({
+  name: "counter",
+  initialState: 0,
+  reducers: {
+    increment: (state, action) => state + action.payload,
+    decrement: (state) => state - 1,
+  },
+});
+export const { increment, decrement } = counterSlice.actions;
+export default counterSlice.reducer;
+```
+
+在上述示例中，createSlice 创建了一个名为 "counter" 的 state，包含初始状态和两个 reducers。它自动生成了对应的 Action Creator。其中 `increment` 和 `decrement` 是自动生成的 Action Creator，可以直接导出使用。
+
+Action Creator 的使用：
+
+```javascript
+import { useDispatch } from "react-redux";
+import { increment, decrement } from "./counterSlice";
+
+const Counter = () => {
+  const dispatch = useDispatch();
+
+  return (
+    <div>
+      <button onClick={() => dispatch(increment(1))}>+</button>
+      <button onClick={() => dispatch(decrement())}>-</button>
+    </div>
+  );
+};
+```
+
+## 中间件
+
+### 什么是中间件
+
+中间件是 Redux 提供的一种机制，用于扩展 Redux 的功能。它位于 Action 被发送（dispatch）和到达 Reducer 之间，可以拦截、修改或异步处理 Action。
 
 ### thunk 中间件
 
@@ -528,23 +644,177 @@ const popperSx = {
 />;
 ```
 
-### 语法讲解
+```js
+MuiButton: {
+  styleOverrides: {
+    root: {
+      textTransform: "none",
+      minHeight: "2rem",
+      color: "#3F3F3F",
+      "@media (hover: hover)": {
+        ":hover": {
+            "--variant-containedBg": "initial",
+            "--variant-textBg": "initial",
+            "--variant-outlinedBorder": "initial",
+            "--variant-outlinedBg": "initial",
+        },
+      },
+    },
+  },
+},
+```
 
-1. `&`：表示当前选择器本身。在上面的例子中，`&`代表 `.MuiPopper-root`,因为该sx作用在`popper: { sx: popperSx }`。
+### 选择规则讲解
+
+1. `&`：表示当前选择器本身。在上面的例子中，`&`代表 `.MuiPopper-root`,因为该 sx 作用在`popper: { sx: popperSx }`。
 
 2. 空格：表示后代选择器。例如，`& .MuiPickersDay-root.Mui-selected` 选择的是 `.MuiPopper-root` 内部的所有具有 `.MuiPickersDay-root` 和 `.Mui-selected` 类的元素。
 
 3. 属性选择器：例如，`&[data-popper-placement*="bottom"]` 选择的是具有 `data-popper-placement` 属性且其值包含 "bottom" 的 `.MuiPopper-root` 元素。
 
-    * `*=`：表示属性值包含某个子字符串。
-    * `^=`：表示属性值以某个字符串开头。
-    * `$=`：表示属性值以某个字符串结尾。
+   - `*=`：表示属性值包含某个子字符串。
+   - `^=`：表示属性值以某个字符串开头。
+   - `$=`：表示属性值以某个字符串结尾。
 
 4. 类选择器：例如，`.MuiPickersDay-root.Mui-selected` 选择同时具有这两个类的元素。
 
 5. 伪类选择器：例如，`.Mui-selected:hover` 选择具有 `.Mui-selected` 类且处于悬停状态的元素。其它常见伪类还有 `:focus`、`:active` 等。
 
+6. 媒体查询：例如，`@media (hover: hover)` 用来判断当前设备的“主要输入方式”是否具备真实的悬停能力（hover），只有当前设备支持hover特性，里面的 CSS 才会生效。（也就是手机打开时不会生效）
+
 注意：
+
 - 如果两个选择器之间没有空格，例如 `.class1.class2`，表示同时具有这两个类的元素；`&:hover` 表示当前元素在悬停状态时; `&.class` 表示当前元素同时具有该类。
 - 如果选择器直接有空格，例如 `& .class`，表示当前元素内部的后代元素。
 
+### 样式讲解
+
+1。 initial：表示使用元素的初始样式，通常是浏览器的默认样式。
+
+# SSE
+
+SSE（Server-Sent Events）是一种允许服务器向客户端推送实时更新的技术。它基于 HTTP 协议，使用单向通信，从服务器发送事件到客户端。
+
+## 基本用法
+```javascript
+// 创建一个 EventSource 实例，连接到服务器的 SSE 端点
+const eventSource = new EventSource("https://example.com/sse-endpoint");
+// 成功连接时触发
+eventSource.onopen = () => {
+  console.log("SSE connection opened.");
+};
+// 监听服务器发送的消息事件
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log("Received data:", data);
+};
+// 监听错误事件
+eventSource.onerror = (error) => {
+  console.error("SSE error:", error);
+};
+// 关闭连接
+// eventSource.close();
+```
+
+## 核心方法解析
+### EventSource(url, options)
+创建一个新的 EventSource 实例，连接到指定的 URL。可选的 options 对象可以包含以下属性：
+- withCredentials：布尔值，指示是否发送凭据（如 cookies）与请求一起发送。
+
+### onopen
+创建eventSource后，浏览器会请求服务器建立连接，连接成功后会触发 onopen 事件。
+
+### onmessage
+处理默认的消息事件。服务器发送的每条消息都会触发该事件，消息内容可以通过 event.data 获取。
+
+### addEventListener(type, listener)
+用于监听特定类型的事件。type 可以是自定义的事件类型，listener 是处理该事件的函数。
+
+### onerror
+处理错误事件。当连接出现问题时会触发该事件。
+
+# 性能测试
+
+## performance + double requestAnimationFrame
+
+首先在代码开始处调用 `performance.mark('start')` 来标记开始时间，通常是 button 点击时：
+
+```javascript
+onClick: () => {
+  performance.mark("add_user_clicked");
+  setOpenAddUser(true);
+};
+```
+
+之后在渲染完成后调用 `performance.mark('end')` 来标记结束时间。由于 React 的渲染是异步的，我们可以使用 `requestAnimationFrame` 来确保在下一次浏览器绘制之后再标记结束时间：
+
+```javascript
+useEffect(() => {
+  if (!open) return;
+
+  // 等 React commit + 浏览器 paint 更稳定：double rAF
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      performance.mark("add_user_dialog_painted");
+      performance.measure(
+        "click_to_dialog_painted",
+        "add_user_clicked",
+        "add_user_dialog_painted"
+      );
+
+      const entries = performance.getEntriesByName("click_to_dialog_painted");
+      const last = entries[entries.length - 1];
+      console.log("Click -> Dialog painted:", last.duration.toFixed(2), "ms");
+
+      // 可选：清理，避免 entries 越积越多
+      performance.clearMarks("add_user_click");
+      performance.clearMarks("add_user_clicked");
+      performance.clearMeasures("click_to_dialog_painted");
+    });
+  });
+}, [open]);
+```
+
+核心点：
+
+- 使用 `performance.mark` 来标记时间点。
+- 使用 `performance.measure` 来计算两个标记之间的时间差。上述代码`performance.measure("click_to_dialog_painted","add_user_clicked", "add_user_dialog_painted");` 是“计算从 add_user_clicked 到 add_user_dialog_painted 中间经历了多少毫秒，并命名为 click_to_dialog_painted”
+- requestAnimationFrame(fn) 的意思是：“等浏览器准备开始下一帧绘制时，再执行 fn”。
+- 第一次 requestAnimationFrame 确保 React 的渲染已经提交到 DOM，但浏览器可能还没有绘制出来。
+- 第二次 requestAnimationFrame 确保浏览器已经完成了绘制。
+- useEffect 会在 React 把这一轮更新 commit 到页面之后才执行。
+
+# 性能优化
+
+## 搜索防抖
+
+```javascript
+import { useState, useEffect } from "react";
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+```
+使用示例：
+
+```javascript
+const [searchTerm, setSearchTerm] = useState("");
+const debouncedSearchTerm = useDebounce(searchTerm, 300);
+useEffect(() => {
+  // 只有在 debouncedSearchTerm 变化时才触发搜索
+  fetchData(debouncedSearchTerm);
+}, [debouncedSearchTerm]);
+```
+
+上述代码中，`useDebounce` Hook 接受一个值和延迟时间作为参数，返回一个防抖后的值。每当输入值发生变化时，都会启动一个定时器，在指定的延迟时间后更新防抖值。如果在延迟时间内输入值再次变化，之前的定时器会被清除，从而实现防抖效果，避免频繁触发搜索操作。
