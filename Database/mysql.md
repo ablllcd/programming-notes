@@ -976,3 +976,37 @@ characteristic说明:
 · NO SQL:不包含SQL语句。
 · READS SQL DATA:包含读取数据的语句,但不包含写入数据的语句。
 ```
+
+# Mysql部署
+
+## DOCKER 部署
+
+### 整体流程
+
+1. 将开发环境的mysql文件导出为sql文件
+    ```
+    mysqldump -u root -p --databases [database_name] > [file_name].sql
+    ```
+
+2. 构建Dockerfile, 将sql文件复制到Docker容器中
+
+    将sql文件复制到Docker容器的特定位置，可以让Docker在启动时自动执行该sql文件，从而完成数据库的初始化。具体命令如下：
+    ```
+    FROM mysql:8.0.33
+    COPY dumps/createdb.sql /docker-entrypoint-initdb.d/step-0-createdb.sql
+    COPY dumps/[schema_name].sql /docker-entrypoint-initdb.d/step-1-create-table.sql
+    COPY dumps/[data_name].sql /docker-entrypoint-initdb.d/step-2-init-table.sql
+    RUN sed -i '1 i use [database_name];' /docker-entrypoint-initdb.d/step-1-create-table.sql
+    RUN sed -i '1 i use [database_name];' /docker-entrypoint-initdb.d/step-2-init-table.sql
+    ENV MYSQL_ROOT_PASSWORD root
+
+    EXPOSE 3306
+    ```
+
+3. 构建镜像并运行容器
+
+**特别注意**
+
+* mysql根据sql文件的名字进行执行，按照字母顺序执行，所以需要在sql文件前边加上step-0, step-1等前缀来保证执行顺序
+* dump导出的sql文件中没有use database语句，所以需要在Dockerfile中添加sed命令来修改sql文件，在第一行添加use database语句来指定使用哪个数据库
+* mysql再导入table前，需要先创建database，所以需要在Dockerfile中添加一个sql文件来创建database，并且保证该sql文件的执行顺序在创建table的sql文件之前

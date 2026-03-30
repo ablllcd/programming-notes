@@ -54,6 +54,15 @@ sudo systemctl stop service_name     # 停止服务
 sudo systemctl restart service_name  # 重启服务
 ```
 
+## 文本查找
+
+### grep命令
+`grep` 是 Linux 系统中用于在文本文件中搜索特定字符串或模式的命令行工具。它可以根据用户提供的模式（通常是正则表达式）在文件中查找匹配的行，并将这些行输出到终端。
+**常用选项**
+- `-i`：忽略大小写进行匹配。
+- `-r`：递归搜索目录中的文件。
+
+
 ## 磁盘操作
 
 ### 查看磁盘用量
@@ -169,7 +178,6 @@ ip link show      # 显示网络接口的状态
 
 1. `netstat` 命令 - 显示网络连接、路由表、接口统计等
     ```bash
-    ```bash
     netstat -tulpn  # 显示所有监听的端口
     ```
     - 参数说明:
@@ -206,6 +214,9 @@ ip a | grep TARGET_IP # 查找包含指定IP地址的网络接口信息
 ### 网络抓包
 ```bash
 sudo tcpdump -i eth0  -w capture.pcap  # 在eth0接口上抓包并保存到capture.pcap文件
+
+# 抓目的为 xxx、端口为 yy 的包，并把 payload 也打印（适合 HTTP）
+sudo tcpdump -i any -nn -s0 -A "dst host xxx and dst port yy"
 ```
 
 ## 进程操作

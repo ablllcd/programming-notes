@@ -103,3 +103,78 @@ mklink /J "C:\Program Files\Docker" "D:\Programming\Docker"
 这创建了一个C盘到D盘的软连接，当软件依旧默认安装到C盘时，它会安装到软连接的文件夹中，实际文件储存在D盘。
 
 前提： "C:\Program Files\Docker不存在（由软连接命令创建）；D:\Programming\Docker存在。
+
+# Docker Compose
+Docker Compose是一个工具，用于定义和运行多容器Docker应用程序。通过使用YAML文件来配置应用程序的服务，Compose可以轻松地管理和部署多个容器。
+
+示例
+```yaml
+services:
+  nginx:
+    build: .
+    ports:
+      - "8080:80"
+    depends_on:
+      - app
+
+  app:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ./app.jar:/app/app.jar:ro
+      - ./application.yml:/app/config/application.yml:ro
+    command: ["java","-jar","/app/app.jar","--spring.config.location=file:/app/config/application.yml"]
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: bcgw
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
+```
+
+## 特别注意
+
+### depends_on 不保证服务完全启动
+
+depends_on：指定服务之间的依赖关系，确保在启动一个服务之前，先启动它所依赖的服务。 但是，它并不保证依赖服务已经完全启动并准备好接受连接！
+
+解决方法：在应用程序中添加重试机制，或者使用健康检查来确保依赖服务已经准备好。
+
+例如，在app服务中添加一个重试机制，直到mysql服务准备好：
+
+```yaml
+  app:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ./app.jar:/app/app.jar:ro
+      - ./application.yml:/app/config/application.yml:ro
+    command: ["java","-jar","/app/app.jar","--spring.config.location=file:/app/config/application.yml"]
+    depends_on:
+      - mysql
+```
+
+
+### volume和容器内映射路径的关系
+
+* 当volume为空时，volume会被容器内映射路径上的内容给初始化
+* 当volume不为空时，volume会覆盖容器内映射路径上的内容
+
+## 存储
+
+将Docker Compose中的镜像进行存储和加载：
+
+```bash
+# 存储镜像
+docker save -o [targetPath] [image]
+# 加载镜像
+docker load -i [inputPath]
+```
+
