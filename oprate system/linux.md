@@ -54,14 +54,37 @@ sudo systemctl stop service_name     # 停止服务
 sudo systemctl restart service_name  # 重启服务
 ```
 
-## 文本查找
+## 环境变量
+
+### CRUD环境变量
+```bash
+export VAR_NAME=value  # 创建环境变量 VAR_NAME 并赋值为 value
+echo $VAR_NAME         # 查看环境变量 VAR_NAME 的值
+export VAR_NAME=new_value  # 更新环境变量 VAR_NAME 的值为 new_value
+unset VAR_NAME         # 删除环境变量 VAR_NAME
+```
+
+### 查找环境变量
+```bash
+printenv | grep VAR_NAME  # 查找包含 VAR_NAME 的环境变量
+env | grep VAR_NAME       # 查找包含 VAR_NAME 的环境变量
+```
+
+### 应用环境变量
+`export` 命令用于在当前 shell 环境中设置环境变量，使其在当前 shell 以及其子进程中可用。所谓的子进程是指由当前 shell 启动的任何程序或脚本。
+```
+export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
+```
+
+
+
+## 文本操作
 
 ### grep命令
 `grep` 是 Linux 系统中用于在文本文件中搜索特定字符串或模式的命令行工具。它可以根据用户提供的模式（通常是正则表达式）在文件中查找匹配的行，并将这些行输出到终端。
 **常用选项**
 - `-i`：忽略大小写进行匹配。
 - `-r`：递归搜索目录中的文件。
-
 
 ## 磁盘操作
 
@@ -102,10 +125,18 @@ sudo systemctl restart service_name  # 重启服务
 
 ### 文件权限
 ```bash
+ll  # 显示文件权限和所有者信息
 chmod 755 filename  # 设置文件权限为 rwxr-xr-x
+chown user:group filename  # 更改文件所有者和所属组
+```
+* 权限分为三类：所有者（user）、所属组（group）和其他用户（others）。每类权限可以分别设置读（r）、写（w）和执行（x）权限。
+* 权限的数值表示：读（r）、写（w）和执行（x）。每个权限对应一个数字：读=4，写=2，执行=1。权限的总和决定了文件的权限设置。例如，755表示所有者有读、写、执行权限（4+2+1=7），而组和其他用户只有读和执行权限（4+1=5）。
+* chmod就是用来修改文件权限的命令，chown用来修改文件的所有者和所属组。
 
-# 查看文件权限
-ls -l filename  # 显示文件权限和所有者信息
+### 统计文件夹
+```bash
+find /path/to/directory -type f | wc -l  # 统计指定目录下的文件数量
+# 显示文件数量 
 ```
 
 ### 移动和重命名文件
@@ -120,7 +151,7 @@ cp source_file destination_file  # 复制文件
 cp -r source_directory destination_directory  # 递归复制目录
 ```
 
-## 解压操作
+## 下载/安装/解压操作
 
 ### 解压文件
 
@@ -164,14 +195,43 @@ cp -r source_directory destination_directory  # 递归复制目录
     gunzip file.gz
     ```
 
+### 使用 wget 下载文件
+```bash
+wget http://example.com/file.zip  # 下载指定URL的文件
+wget -c http://example.com/file.zip  # 断点续传下载 
+wget -r http://example.com/dir/  # 递归下载目录
+```
+
+### 使用apt-get下载软件包
+```bash
+sudo apt-get update  # 更新软件包列表
+sudo apt-get install package_name  # 安装指定软件包
+sudo apt-get remove package_name  # 卸载指定软件包
+sudo apt-get upgrade  # 升级已安装的软件包
+sudo apt-get dist-upgrade  # 升级系统，包括内核和依赖关系
+```
+
+### 安装软件包
+```bash
+sudo dpkg -i package.deb  # 安装 .deb 软件包
+sudo rpm -i package.rpm  # 安装 .rpm 软件包
+```
+
 
 ## 网络操作
+
+### 配置网络IP
+```bash
+dhclient # 获取动态IP地址
+```
 
 ### 查看网络配置
 ```bash
 ifconfig          # 显示网络接口配置
 ip addr show      # 显示网络接口的详细信息
 ip link show      # 显示网络接口的状态
+ip a              # 显示所有网络接口信息
+ip route show      # 显示路由表
 ```
 
 ### 查看端口占用
@@ -278,30 +338,22 @@ sudo tcpdump -i any -nn -s0 -A "dst host xxx and dst port yy"
     kill -9 pid           # 强制终止进程
     ```
 
-## 下载操作
-
-### 使用 wget 下载文件
-```bash
-wget http://example.com/file.zip  # 下载指定URL的文件
-wget -c http://example.com/file.zip  # 断点续传下载 
-wget -r http://example.com/dir/  # 递归下载目录
-```
-### 使用apt-get下载软件包
-```bash
-sudo apt-get update  # 更新软件包列表
-sudo apt-get install package_name  # 安装指定软件包
-sudo apt-get remove package_name  # 卸载指定软件包
-sudo apt-get upgrade  # 升级已安装的软件包
-sudo apt-get dist-upgrade  # 升级系统，包括内核和依赖关系
-```
-
 ## GPU相关操作
 
 ### 查看GPU信息
 ```bash
 nvidia-smi  # 显示NVIDIA GPU的状态和使用情况
 ```
+openebs-3.3.1
+## 文本编辑器
 
+### nano
+```bash
+Ctrl + K  # 剪切当前行
+Ctrl + U  # 粘贴剪切的行
+Ctrl + O  # 保存文件
+Ctrl + X  # 退出nano
+```
 
 # 概念讲解
 

@@ -139,6 +139,24 @@ volumes:
   mysql_data:
 ```
 
+## Docker Compose基本操作
+
+### 启动Docker Compose
+```
+docker compose up  // 前台运行
+docker compose up -d  // 后台运行
+```
+
+* 如果Service的镜像不存在，Docker Compose会自动构建或拉取镜像。
+
+### 关闭Docker Compose
+```
+docker compose stop // 只停止容器，不删除
+docker compose down // 停止并删除所有容器
+docker compose down --rmi all  // 删除所有容器和镜像
+docker compose down --v  // 删除所有容器和卷
+```
+
 ## 特别注意
 
 ### depends_on 不保证服务完全启动
