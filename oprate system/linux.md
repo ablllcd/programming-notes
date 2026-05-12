@@ -151,7 +151,25 @@ cp source_file destination_file  # 复制文件
 cp -r source_directory destination_directory  # 递归复制目录
 ```
 
+### 查找文件
+```bash
+find /path/to/search -name "filename"  # 在指定路径下查找文件
+find /path/to/search -type f -name "*.txt"  # 查找指定路径下的所有 .txt 文件
+```
+
 ## 下载/安装/解压操作
+
+### 压缩文件
+```bash
+tar -cvf file.tar /path/to/directory  # 将目录压缩为 .tar 文件
+tar -czvf file.tar.gz /path/to/directory  # 将目录压缩为 .tar.gz 文件
+tar -cjvf file.tar.bz2 /path/to/directory  # 将目录压缩为 .tar.bz2 文件
+zip -r file.zip /path/to/directory  # 将目录压缩为 .zip 文件
+rar a file.rar /path/to/directory  # 将目录压缩为 .rar 文件 
+7z a file.7z /path/to/directory  # 将目录压缩为 .7z 文件
+xz -z file  # 将文件压缩为 .xz 文件
+gzip file  # 将文件压缩为 .gz 文件
+```
 
 ### 解压文件
 
@@ -222,7 +240,28 @@ sudo rpm -i package.rpm  # 安装 .rpm 软件包
 
 ### 配置网络IP
 ```bash
-dhclient # 获取动态IP地址
+dhclient # 获取动态IP地址 & 临时生效
+```
+
+#### netplan配置静态IP
+在 /etc/netplan/ 目录下创建一个 .yaml 文件，内容如下：
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      addresses:
+        - 192.168.1.100/24
+      routes:
+        - to: default
+          via: 192.168.1.1
+      nameservers:
+        addresses:[8.8.8.8, 8.8.4.4]
+```
+然后运行以下命令应用配置：
+```bash
+sudo netplan apply
 ```
 
 ### 查看网络配置
@@ -232,6 +271,7 @@ ip addr show      # 显示网络接口的详细信息
 ip link show      # 显示网络接口的状态
 ip a              # 显示所有网络接口信息
 ip route show      # 显示路由表
+ip route | grep default  # 显示默认路由
 ```
 
 ### 查看端口占用

@@ -1,26 +1,67 @@
-## 连接服务器
+## 密钥对连接服务器
 
-ssh经常被用作服务器的登录认证，这里记录一下基本用法
+ssh可以通过账号密码或者密钥对来连接服务器。这里讲一下密钥对的连接方式。
 
-### 命令行连接
+### 1. 生成密钥对
+```
+ssh-keygen
+```
 
+### 2. 将公钥添加到服务器
+```
+ssh-copy-id -i ~/.ssh/id_rsa.pub user@hostname
+```
+如果是亚马逊等云服务商提供的服务器，根据其提供的方式将公钥添加到服务器上。
+
+
+### 3. 连接服务器
 ```
 ssh -i /path/to/private_key.pem user@hostname
 ```
 
-### 配置文件
+这是连接服务器时手动输入private key路径的方式。为了方便，可以配置 ssh：
 
-由于命令行每次都要写参数，很麻烦。为此可以创建"C:\Users\Cc\.ssh\config"文件，其中填写连接信息：
+* 编辑 ~/.ssh/config 文件，添加如下内容：
+  ```
+  Host ElderlyCare
+    HostName 20.2.19.2
+    User caoyuwei
+    IdentityFile C:\Users\Cc\.ssh\ElderlyCareServer-key.pem
+  ```
+
+  之后再连接只需要再命令行输入
+
+  ```
+  ssh ElderlyCare
+  ```
+
+* 将ssh private key放在默认位置（~/.ssh/id_rsa），这样ssh会自动使用默认的私钥进行连接，就不需要在命令行中指定私钥路径了：
+
+  ```
+  ssh user@hostname
+  ```
+
+  注意：私钥名称必须是 id_rsa等特定名称，或者在 ssh config 中指定 IdentityFile 的路径和名称，否则 ssh 不会自动使用这个私钥进行连接。
+
+## 文件传输
+### scp
 
 ```
-Host ElderlyCare
-  HostName 20.2.19.2
-  User caoyuwei
-  IdentityFile C:\Users\Cc\.ssh\ElderlyCareServer-key.pem
-```
+# 拷贝单个文件到远程服务器
+scp local_file user@hostname:/remote/directory
 
-之后再连接只需要再命令行输入
+# 从远程服务器拷贝单个文件到本地
+scp user@hostname:/remote/file local_directory
 
-```
-ssh ElderlyCare
+# 拷贝整个目录到远程服务器
+scp -r local_directory user@hostname:/remote/directory
+
+# 从远程服务器拷贝整个目录到本地
+scp -r user@hostname:/remote/directory local_directory
+
+# 通配符批量拷贝
+scp user@hostname:/remote/directory/*.txt local_directory
+
+# 多文件拷贝
+scp file1.txt file2.txt user@hostname:/remote/directory
 ```

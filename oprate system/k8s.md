@@ -86,32 +86,152 @@ Kubernetes 集群由一个控制平面和一组用于运行容器化应用的工
 - 多租户支持
 - 资源配额管理
 
+### Service 和 Pod 的关系
+
+Service 和 Pod 是 Kubernetes 中两个核心且紧密关联的概念，它们的关系可以用一句话概括：**Service 为一组动态变化的 Pod 提供稳定的网络访问入口**。
+
+#### 1. 为什么需要 Service？
+
+Pod 具有以下特性，导致直接访问 Pod 不可靠：
+
+- **IP 不固定**：Pod 每次创建/重启都会被分配新的 IP 地址
+- **动态扩缩容**：Pod 的数量会随副本数变化而增减
+- **节点迁移**：Pod 可能因节点故障被调度到其他节点
+
+Service 解决了这些问题，为客户端提供一个**固定的虚拟 IP（ClusterIP）和 DNS 名称**。
+
+#### 2. Service 如何关联 Pod —— Label Selector
+
+Service 通过 **Label Selector（标签选择器）** 来匹配合适的 Pod：
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-svc
+spec:
+  selector:         # ← 标签选择器
+    app: my-app     #   选择所有带 app=my-app 标签的 Pod
+  ports:
+    - protocol: TCP
+      port: 80          # Service 端口
+      targetPort: 8080  # 转发到 Pod 的端口
+```
+
+对应的 Pod 需要带有匹配的标签：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app-pod
+  labels:
+    app: my-app     # ← 与 Service selector 匹配
+spec:
+  containers:
+    - name: my-app
+      image: my-app:latest
+      ports:
+        - containerPort: 8080
+```
+
+#### 3. 关系示意图
+
+```
+┌──────────────────────────────────────────────────┐
+│                   Service                         │
+│              ClusterIP: 10.0.0.1                  │
+│              Port: 80                             │
+│         selector: app=my-app                      │
+├──────────┬──────────┬──────────┬──────────────────┤
+│          │          │          │                   │
+│    ┌─────▼────┐ ┌──▼─────┐ ┌──▼──────┐            │
+│    │  Pod A   │ │ Pod B  │ │ Pod C   │   ...      │
+│    │10.0.1.2  │ │10.0.1.5│ │10.0.1.9 │            │
+│    │app=my-app│ │app=my-a│ │app=my-ap│            │
+│    └──────────┘ └────────┘ └─────────┘            │
+│                                                    │
+│  客户端 → Service(10.0.0.1:80) → 随机转发到某个Pod   │
+└──────────────────────────────────────────────────┘
+```
+
+#### 4. 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| **稳定访问入口** | Service 的 ClusterIP 和 DNS 名称在生命周期内保持不变 |
+| **自动负载均衡** | 请求被随机分发到符合条件的 Pod（默认基于 iptables/IPVS） |
+| **动态感知** | Service 持续监听 Pod 变化，自动加入/移除 Endpoint |
+| **解耦** | 客户端只需知道 Service 名称，无需关心后端 Pod 的具体 IP |
+| **多种暴露方式** | ClusterIP（集群内访问）、NodePort（节点端口）、LoadBalancer（负载均衡器）、ExternalName（外部服务映射） |
+
+#### 5. Endpoint 与 EndpointSlice
+
+当 Service 通过 Selector 匹配到 Pod 后，Kubernetes 会自动创建对应的 **Endpoint**（或 **EndpointSlice**，新版默认）资源，记录所有后端 Pod 的 IP 和端口：
+
+```bash
+# 查看 Service 对应的 Endpoint
+kubectl get endpoints my-app-svc
+
+# 输出示例
+NAME         ENDPOINTS                          AGE
+my-app-svc   10.0.1.2:8080,10.0.1.5:8080,10.0.1.9:8080   5m
+```
+
+这里Service 的ClusterIP 是虚拟IP,只供Cluster内访问; 而Endpoints中的IP是实际物理Pod的IP。当客户端 (Pod) 访问Service的CLuster IP时，kube-proxy会根据Endpoint列表将流量转发到对应的Pod上。
+
+**流量转发流程**：
+
+```
+客户端请求 → Service(ClusterIP:Port) → Endpoint(记录Pod列表) → 具体某个Pod
+```
+
+注意这里指的是Cluster内部的访问；如果需要从集群外部访问Service，则需要使用<任意NodIP>:<service-port>来访问。
+
+#### 6. 无 Selector 的 Service
+
+Service 也可以不指定 Selector，用于手动管理 Endpoint，常见场景：
+
+- 访问**集群外部的服务**（如外部数据库）
+- 跨命名空间访问服务
+- 迁移过程中的过渡阶段
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-db
+spec:
+  ports:
+    - port: 3306
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: external-db
+subsets:
+  - addresses:
+      - ip: 192.168.1.100    # 外部数据库 IP
+    ports:
+      - port: 3306
+```
 
 ## 常见操作
 
-### 查看 Kubernetes 服务和端口
-要查看本机（Node）上运行的 Kubernetes 服务，可以使用以下命令:
-
-```sh
-kubectl get svc
+### 查看K8S状态
+```
+kubectl cluster-info    # 查看集群信息
+kubectl get nodes       # 查看节点状态
+kubectl get componentstatuses  # 查看控制平面组件状态
+kubectl get pods        # 查看Pod状态
+kubectl get svc         # 查看服务状态
 ```
 
-如果想查看某个命名空间下的服务：
-
-```sh
-kubectl get svc -n <namespace>
+### 操作Pod
 ```
-
-要查看本机（Node）上实际运行的 Pod 可以用：
-
-```sh
-kubectl get pods -o wide
+kubectl get pods -o wide  # 查看Pod的详细信息
+kubectl describe pod <pod-name>  # 查看Pod的详细描述
+kubectl logs <pod-name>  # 查看Pod的日志
+kubectl exec -it <pod-name> -- /bin/bash  # 进入Pod的交互式终端
+kubectl delete pod <pod-name>  # 删除Pod(会被Deployment等控制器自动重建)
 ```
-
-如果需要查看本地端口映射，可以使用 `kubectl port-forward`：
-
-```sh
-kubectl port-forward svc/<service-name> <local-port>:<service-port>
-```
-
-这样可以将本地端口转发到指定的服务端口，方便本地访问。
