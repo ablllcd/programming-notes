@@ -165,7 +165,14 @@ spec:
 | **解耦** | 客户端只需知道 Service 名称，无需关心后端 Pod 的具体 IP |
 | **多种暴露方式** | ClusterIP（集群内访问）、NodePort（节点端口）、LoadBalancer（负载均衡器）、ExternalName（外部服务映射） |
 
-#### 5. Endpoint 与 EndpointSlice
+#### 5. 哪些pod应该放入相同的Service中？
+在 Kubernetes 中，判断 Pod 是否应该放入同一个 Service，核心看一点：`这些 Pod 是否对外提供“无差别”的服务`。
+
+Service 的本质是一个负载均衡器，它将流量随机或按策略分发到后端的 Pod。因此，如果请求发送到 A Pod 和 B Pod，对客户端来说必须是可以互换的，它们才应该在一个 Service 里。
+
+简单来说，同一个应用的多个副本（ReplicaSet 管理的 Pod）通常应该放在同一个 Service 中，因为它们提供相同的功能和接口。而不同应用或不同版本的 Pod 则应该分开到不同的 Service 中，以避免混淆和错误路由。
+
+#### 6. Endpoint 与 EndpointSlice
 
 当 Service 通过 Selector 匹配到 Pod 后，Kubernetes 会自动创建对应的 **Endpoint**（或 **EndpointSlice**，新版默认）资源，记录所有后端 Pod 的 IP 和端口：
 
@@ -188,7 +195,7 @@ my-app-svc   10.0.1.2:8080,10.0.1.5:8080,10.0.1.9:8080   5m
 
 注意这里指的是Cluster内部的访问；如果需要从集群外部访问Service，则需要使用<任意NodIP>:<service-port>来访问。
 
-#### 6. 无 Selector 的 Service
+#### 7. 无 Selector 的 Service
 
 Service 也可以不指定 Selector，用于手动管理 Endpoint，常见场景：
 
@@ -216,6 +223,164 @@ subsets:
       - port: 3306
 ```
 
+
+
+
+### Namespace的作用
+
+Namespace 位于 Kubernetes 的逻辑组织层，具体位置如下：
+```
+┌─────────────────────────────────────────────┐
+│                集群 (Cluster)               │
+│  ┌─────────────┐  ┌─────────────┐           │
+│  │ Namespace A │  │ Namespace B │  ...      │
+│  │  ┌───────┐  │  │  ┌───────┐  │           │
+│  │  │ Pod   │  │  │  │ Pod   │  │           │
+│  │  │Service│  │  │  │Service│  │           │
+│  │  │ConfigMap││  │  │ConfigMap││           │
+│  │  └───────┘  │  │  └───────┘  │           │
+│  └─────────────┘  └─────────────┘           │
+│          ↓ 物理层面 ↓                        │
+│  ┌─────────────────────────────────┐        │
+│  │    Node 1    │    Node 2    │   │        │
+│  │  Pod(A) Pod(B) Pod(A) Pod(B) │  │        │
+│  └─────────────────────────────────┘        │
+└─────────────────────────────────────────────┘
+```
+
+Namespace 不涉及物理隔离，Pod 依然可以在不同 Node 上混合调度。
+
+
+
+### Ingress
+
+#### 1. 为什么需要 Ingress？
+
+Service 的 NodePort 和 LoadBalancer 类型虽然能将服务暴露到集群外，但存在一些局限：
+
+- **端口管理混乱**：每个 Service 一个端口，难以记住和统一管理
+- **无法通过 HTTP域名进行访问**：NodePort/LoadBalancer 工作在传输层(TCP/UDP)，无法基于 HTTP 路径、域名等 L7 信息做路由，
+
+**Ingress** 解决了这些问题，它工作在应用层(L7)，为集群内的 Service 提供**统一的 HTTP/HTTPS 入站访问入口**。
+
+#### 2. 什么是 Ingress？
+
+Ingress 是 Kubernetes 的一种 API 资源，用于管理集群外部访问集群内部服务的 HTTP/HTTPS 路由规则。它相当于集群的 **"智能网关"** 或 **"反向代理"**。
+
+```
+       ┌──────────────────────────────────────────┐
+       │              Internet                     │
+       │             http://myapp.com              │
+       └────────────────┬─────────────────────────┘
+                        │
+                 ┌──────▼──────┐
+                 │   Ingress    │  ← 统一入口，根据规则分发
+                 │  (Nginx/HAProxy/Traefik/...)
+                 └──┬───────┬──┘
+                    │       │
+             ┌──────▼─┐ ┌──▼──────┐
+             │Service A│ │Service B│
+             │:80      │ │:80      │
+             └────┬────┘ └────┬────┘
+                  │           │
+             ┌────▼────┐ ┌───▼────┐
+             │ Pod A1  │ │ Pod B1 │
+             │ Pod A2  │ │ Pod B2 │
+             └─────────┘ └────────┘
+```
+
+#### 3. Ingress 的核心组成
+
+| 组件 | 说明 |
+|------|------|
+| **Ingress Controller** | 实际的流量转发组件（如 Nginx Ingress Controller、Traefik、HAProxy、AWS ALB Ingress Controller），负责解析 Ingress 规则并实现反向代理 |
+| **Ingress 资源** | 定义的 YAML 规则，描述"什么域名/路径 → 转发到哪个 Service" |
+| **TLS 证书** | 可选，配置 HTTPS 证书实现 SSL 终止 |
+
+> **注意**：Ingress 资源本身只是一组规则定义，真正的流量转发由 **Ingress Controller** 实现。集群默认不会安装 Ingress Controller，需要手动部署。
+
+#### 4. 一个完整的 Ingress 示例
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /   # 路径重写
+spec:
+  ingressClassName: nginx          # 指定 Ingress Controller
+  tls:
+    - hosts:
+        - myapp.example.com
+      secretName: myapp-tls-secret # TLS 证书 Secret
+  rules:
+    - host: myapp.example.com      # 域名路由
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix       # 前缀匹配
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-service
+                port:
+                  number: 80
+    - host: admin.example.com      # 另一个域名
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-service
+                port:
+                  number: 80
+```
+
+#### 5. Ingress 路由规则详解
+
+Ingress 支持多种路由方式：
+
+| 路由方式 | 示例 | 说明 |
+|----------|------|------|
+| **域名路由** | `host: app.example.com` | 根据不同域名转发到不同 Service |
+| **路径路由** | `path: /api` | 根据不同 URL 路径转发到不同 Service |
+| **域名 + 路径** | 两者组合 | 同时匹配域名和路径 |
+| **默认后端** | 不指定 host | 处理所有未匹配规则的请求 |
+
+**pathType 说明**：
+
+| pathType | 行为 |
+|----------|------|
+| `Prefix` | 前缀匹配，如 `/api` 匹配 `/api`、`/api/v1`、`/api/v2/users` |
+| `Exact` | 精确匹配，如 `/api` 只匹配 `/api` |
+| `ImplementationSpecific` | 由 Ingress Controller 自行决定匹配规则 |
+
+#### 6. 流量流转完整路径
+
+```
+用户请求 (http://myapp.example.com/api/users)
+  │
+  ▼
+① DNS 解析 → 指向集群入口（NodeIP 或 LB 地址）
+  │
+  ▼
+② Ingress Controller（如 Nginx）接收请求
+  │  检查 Ingress 规则：host=myapp.example.com, path=/api → api-service:80
+  ▼
+③ Service (api-service) 接收请求
+  │  kube-proxy 根据 Endpoint 列表转发
+  ▼
+④ Pod (api-service-xxx) 处理请求并返回响应
+```
+
 ## 常见操作
 
 ### 查看K8S状态
@@ -234,4 +399,14 @@ kubectl describe pod <pod-name>  # 查看Pod的详细描述
 kubectl logs <pod-name>  # 查看Pod的日志
 kubectl exec -it <pod-name> -- /bin/bash  # 进入Pod的交互式终端
 kubectl delete pod <pod-name>  # 删除Pod(会被Deployment等控制器自动重建)
+```
+
+### 操作Namespace
+```
+kubectl -n <namespace-name> <command> # 在指定命名空间下执行命令
+kubectl get namespaces  # 查看所有命名空间
+kubectl create namespace <namespace-name>  # 创建命名空间
+kubectl delete namespace <namespace-name>  # 删除命名空间
+kubectl config set-context --current --namespace=<namespace-name> # 切换默认命名空间
+kubectl config view --minify | grep namespace:  # 查看当前默认命名空间
 ```

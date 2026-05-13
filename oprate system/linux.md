@@ -6,6 +6,14 @@ https://www.runoob.com/linux/linux-shell.html
 
 ## 系统操作
 
+### 常用操作
+```bash
+#关机
+shutdown -h now  # 立即关机
+shutdown -h +10  # 10分钟后关机
+reboot  # 重启系统
+```
+
 ### 查看系统信息
 1. 查看操作系统版本
    ```bash
@@ -37,6 +45,22 @@ https://www.runoob.com/linux/linux-shell.html
     # 将时间戳转换为UTC格式     
      date -u -d @<timestamp> +"%Y-%m-%dT%H:%M:%SZ"
     ```
+
+### 查看系统日志
+```bash
+journalctl  # 显示系统日志
+journalctl -u service_name  # 显示指定服务的日志
+journalctl -f  # 实时跟踪日志输出
+journalctl --since "2024-01-01" --until "2024-01-31"  # 显示指定日期范围内的日志
+journalctl -n 100  # 显示最近的100条日志
+```
+
+### 查看操作日志
+```bash
+last  # 显示最近的登录记录
+last reboot  # 显示系统重启记录
+history # 显示命令历史记录
+```
 
 ### systemctl
 systemctl 是 Linux 系统中用于 控制 systemd 系统和服务管理器 的命令行工具。而systemd 是一种初始化系统（init system），负责在系统启动时启动服务、挂载文件系统、管理日志等。systemctl 就是与 systemd 交互的工具。
@@ -127,6 +151,7 @@ export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
 ```bash
 ll  # 显示文件权限和所有者信息
 chmod 755 filename  # 设置文件权限为 rwxr-xr-x
+chmod -r 755 directory  # 递归设置目录及其内容的权限
 chown user:group filename  # 更改文件所有者和所属组
 ```
 * 权限分为三类：所有者（user）、所属组（group）和其他用户（others）。每类权限可以分别设置读（r）、写（w）和执行（x）权限。
@@ -325,6 +350,7 @@ sudo tcpdump -i any -nn -s0 -A "dst host xxx and dst port yy"
 
 1. `ps` 命令 - 显示当前进程信息
     ```bash
+    ps            # 显示当前用户的进程
     ps aux        # 显示所有进程的详细信息
     ps -ef        # 显示所有进程的完整格式
     ```
@@ -393,6 +419,11 @@ Ctrl + K  # 剪切当前行
 Ctrl + U  # 粘贴剪切的行
 Ctrl + O  # 保存文件
 Ctrl + X  # 退出nano
+```
+
+#### 查找关键词
+```
+Ctrl + W  # 查找关键词
 ```
 
 # 概念讲解

@@ -23,7 +23,7 @@ Docker也有自己的仓库来储存镜像。
 Docker分别提供了GUI和命令行来允许用户使用。
 
 # 基本操作
-## 镜像操作
+## 镜像
 ````
 // 查看镜像
 docker images
@@ -37,7 +37,10 @@ docker save -o [targetPath] [image]
 docker load -i [inputPath]
 ````
 
-## 容器操作
+### 注意事项
+* 不同版本的docker打包image的格式可能不同，导致无法在不同版本的docker之间进行image的导入和导出。
+
+## 容器
 
 ### 查看容器
 ```
@@ -85,6 +88,23 @@ docker network ls   //查看当前网络
 docker network connect <Net> <contianer>  //添加到网络
 
 ````
+
+## Docker 网络
+
+Docker可以为多个容器创建一个虚拟网络，使它们能够相互通信。Docker默认提供了三种网络模式：
+1. bridge：默认的网络模式，容器通过NAT连接到主机网络
+2. host：容器直接使用主机的网络，容器内的服务可以通过主机IP访问
+3. none：容器没有网络连接
+
+### 基本操作
+```
+docker network create [NetName] //创建一个新的网络
+docker network ls   //查看当前网络
+docker network rm [NetName]  //删除网络
+docker network connect <Net> <contianer>  //将容器连接到指定网络
+docker network disconnect <Net> <contianer>  //将容器从指定网络断开
+```
+
 
 
 ## 修改DOCKER存储位置
@@ -138,6 +158,25 @@ services:
 volumes:
   mysql_data:
 ```
+
+## Docker Compose文件结构
+Docker Compose文件通常命名为docker-compose.yml，包含以下主要部分：
+- version: 指定Compose文件的版本
+- services: 定义应用程序的服务，每个服务对应一个容器
+- volumes: 定义数据卷，用于持久化存储
+- networks: 定义自定义网络，允许服务之间通信
+- build: 指定构建镜像的上下文和Dockerfile路径
+- image: 指定服务使用的镜像，可以是本地镜像或远程仓库中的镜像
+- environment: 定义环境变量，传递给容器
+- command: 覆盖容器的默认命令，指定容器启动时执行的命令
+
+## Docker Compose和Image的关系
+Docker Compose正如名字所述，是多个Docker的集合。其文件中的services部分定义了应用程序的服务，每个服务对应一个容器。
+
+* 每个服务可以指定一个镜像（image）来运行容器，或者指定一个构建上下文（build）来构建镜像。
+* 当使用image时，Docker Compose会从指定的镜像创建容器；当使用build时，Docker Compose会根据Dockerfile构建镜像，然后创建容器。
+* Docker Compose只有首次运行时会构建镜像，之后会直接使用已经构建好的镜像来创建容器，除非Dockerfile发生了变化或者手动删除了镜像。也可以通过参数`docker compose build`来强制重新构建镜像。
+* Docker Compose构建的Image名称默认是`<目录名>_<服务名>`，也可以通过`image`字段指定自定义的镜像名称。其中`<目录名>`是docker-compose.yml所在目录的名称，`<服务名>`是services中定义的服务名称。
 
 ## Docker Compose基本操作
 
