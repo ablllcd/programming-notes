@@ -76,6 +76,16 @@ Kubernetes 集群由一个控制平面和一组用于运行容器化应用的工
 - 支持负载均衡
 - 类型：ClusterIP、NodePort、LoadBalancer、ExternalName
 
+#### Service 类型讲解
+| 类型 | 说明 |
+|------|------|
+| ClusterIP | 默认类型，提供集群内部访问 |
+| NodePort | 在每个节点上开放一个端口，允许外部访问 |
+| LoadBalancer | 在云环境中创建负载均衡器，提供外部访问 |
+| ExternalName | 将 Service 映射到外部 DNS 名称 |
+
+注意：类型是向下兼容的，NodePort 包含 ClusterIP 的功能，LoadBalancer 包含 NodePort 的功能。
+
 ### Deployment
 - 管理 Pod 的副本集
 - 支持滚动更新和回滚
@@ -410,3 +420,21 @@ kubectl delete namespace <namespace-name>  # 删除命名空间
 kubectl config set-context --current --namespace=<namespace-name> # 切换默认命名空间
 kubectl config view --minify | grep namespace:  # 查看当前默认命名空间
 ```
+
+# Kubectl
+
+## 配置
+
+### 配置文件位置
+```bash
+# Linux/MacOS
+~/.kube/config
+# Windows
+%USERPROFILE%\.kube\config
+```
+
+注意，kubectl是跟用户绑定的，例如ubuntu用户和root用户去查找的配置文件位置是不同的。
+
+### 配置文件作用
+
+- **集群信息**：包含集群的 API Server 地址、证书等连接信息；kubectl就是根据这里的信息来连接 Kubernetes 集群的。

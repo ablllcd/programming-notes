@@ -65,3 +65,20 @@ scp user@hostname:/remote/directory/*.txt local_directory
 # 多文件拷贝
 scp file1.txt file2.txt user@hostname:/remote/directory
 ```
+
+## Tunnel转发
+
+SSH Tunnel转发可以将本地端口转发到远程服务器，或者将远程服务器的端口转发到本地，从而实现安全的访问。
+
+例如， A-B-C的网络结构，A和B可以ssh连接，B和C可以ssh连接，但A和C不能直接ssh连接。此时可以在A上使用SSH Tunnel转发，将A的本地端口转发到C的SSH端口，这样就可以通过A访问C了。
+
+```
+# A通过B访问C的端口
+ssh -L <local_port>:<IP_C>:<Port_C> ubuntu@<IP_B>
+```
+
+也可以取消转发：
+
+```
+exit  # 退出SSH连接，取消转发
+```

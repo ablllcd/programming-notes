@@ -53,6 +53,7 @@ journalctl -u service_name  # 显示指定服务的日志
 journalctl -f  # 实时跟踪日志输出
 journalctl --since "2024-01-01" --until "2024-01-31"  # 显示指定日期范围内的日志
 journalctl -n 100  # 显示最近的100条日志
+journalctl -k # 显示内核日志
 ```
 
 ### 查看操作日志
@@ -152,6 +153,9 @@ export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
 ll  # 显示文件权限和所有者信息
 chmod 755 filename  # 设置文件权限为 rwxr-xr-x
 chmod -r 755 directory  # 递归设置目录及其内容的权限
+chmod u+x filename  # 给文件所有者添加执行权限
+chmod g-w filename  # 移除文件所属组的写权限
+chmod o+r filename  # 给其他用户添加读权限
 chown user:group filename  # 更改文件所有者和所属组
 ```
 * 权限分为三类：所有者（user）、所属组（group）和其他用户（others）。每类权限可以分别设置读（r）、写（w）和执行（x）权限。

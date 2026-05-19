@@ -58,7 +58,7 @@ docker stop container   //停止container
 docker kill container   //强制停止
 ```
 
-#### 启动/创建时的常见参数
+### 启动/创建时的常见参数
 ```
 -d  // 后台运行
 -p [hostPort]:[containerPort]  // 端口映射
@@ -73,20 +73,17 @@ docker kill container   //强制停止
 docker exec -it [container_name] /bin/bash
 ```
 
+### 查看容器策略
+```bash
+docker inspect [container_name]  // 查看容器的详细信息，包括网络设置、挂载点等
+docker inspect --format='{{.HostConfig.RestartPolicy.Name}}' <容器名或ID> // 查看容器的重启策略
+docker inspect --format='{{.Name}} - {{.HostConfig.RestartPolicy.Name}}' $(docker ps -aq) // 查看所有容器的重启策略
+```
 
-#### 其它操作
+### 拷贝数据
 ````
 // 拷贝本机数据到容器里
 docker cp YOUR_PATH_TO_FOLDER/DBLP-Lab2.tar.gz [containnerName]:/  
-
-// 运行容器的shell
-docker exec -it mycassandra /bin/sh
-
-// 虚拟网络，允许container相互交流
-docker network create [NetName]
-docker network ls   //查看当前网络
-docker network connect <Net> <contianer>  //添加到网络
-
 ````
 
 ## Docker 网络
