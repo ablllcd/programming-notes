@@ -408,6 +408,7 @@ kubectl get pods -o wide  # 查看Pod的详细信息
 kubectl describe pod <pod-name>  # 查看Pod的详细描述
 kubectl logs <pod-name>  # 查看Pod的日志
 kubectl exec -it <pod-name> -- /bin/bash  # 进入Pod的交互式终端
+kubectl exec <pod-name> -- command  # 在Pod中执行命令
 kubectl delete pod <pod-name>  # 删除Pod(会被Deployment等控制器自动重建)
 ```
 
