@@ -91,6 +91,10 @@ Kubernetes 集群由一个控制平面和一组用于运行容器化应用的工
 - 支持滚动更新和回滚
 - 声明式配置
 
+Deployment 是一种更高级的控制器，它管理着 ReplicaSet，而 ReplicaSet 又管理着 Pod。我们通常直接使用 Deployment 来管理应用的部署和更新，而不直接操作 ReplicaSet 或 Pod。
+
+#### 常用
+
 ### Namespace
 - 逻辑隔离资源
 - 多租户支持
@@ -420,6 +424,17 @@ kubectl create namespace <namespace-name>  # 创建命名空间
 kubectl delete namespace <namespace-name>  # 删除命名空间
 kubectl config set-context --current --namespace=<namespace-name> # 切换默认命名空间
 kubectl config view --minify | grep namespace:  # 查看当前默认命名空间
+```
+
+### 操作Deployment
+```
+kubectl get deployments  # 查看Deployment状态
+kubectl describe deployment <deployment-name>  # 查看Deployment的详细描述
+kubectl scale deployment <deployment-name> --replicas=<number>  # 调整副本数
+kubectl rollout status deployment <deployment-name>  # 查看滚动更新状态
+kubectl rollout history deployment <deployment-name>  # 查看更新历史
+kubectl rollout undo deployment <deployment-name>  # 回滚到上一个版本
+kubectl delete deployment <deployment-name>  # 删除Deployment(会删除对应的Pod)
 ```
 
 # Kubectl

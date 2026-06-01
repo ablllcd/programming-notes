@@ -180,6 +180,7 @@ mv filename /path/to/directory/  # 移动文件到指定目录
 ```bash
 cp source_file destination_file  # 复制文件
 cp -r source_directory destination_directory  # 递归复制目录
+cp -r source_directory/* destination_directory/  # 复制目录下的所有内容到目标目录
 ```
 
 ### 查找文件
@@ -303,6 +304,12 @@ ip link show      # 显示网络接口的状态
 ip a              # 显示所有网络接口信息
 ip route show      # 显示路由表
 ip route | grep default  # 显示默认路由
+```
+
+### 临时添加/删除IP地址
+```bash
+sudo ip addr add 192.168.1.100/24 dev eth0  # 临时添加IP地址
+sudo ip addr del 192.168.1.100/24 dev eth0  # 临时删除IP地址
 ```
 
 ### 查看端口占用
@@ -450,6 +457,23 @@ unset VAR_NAME         # 删除环境变量 VAR_NAME
 ```
 
 这些只是在当前 shell 会话中生效，如果想要永久生效，需要将 export 命令添加到用户的 shell 配置文件中，如 ~/.bashrc。
+
+## 快捷操作
+
+### 执行历史命令
+```bash
+!!  # 执行上一条命令
+!n  # 执行历史记录中第 n 条命令
+!string  # 执行历史记录中以 string 开头的命令
+```
+
+### 编辑文本
+```bash
+Ctrl + A  # 移动光标到行首
+Ctrl + E  # 移动光标到行尾
+Ctrl + U  # 删除光标前的文本 (U: "Up")
+Ctrl + K  # 删除光标后的文本 (K: "Kill")
+```
 
 # 概念讲解
 
