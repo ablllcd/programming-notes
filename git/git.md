@@ -131,6 +131,14 @@ git push <remote> <branch>
 
 ## 撤销操作
 
+### 本地提交了，但是还没有 push 到远程仓库
+
+```
+git reset --soft HEAD^    # 只撤销提交，保留修改
+git reset --mixed HEAD^   # 撤销提交和暂存区的修改，保留工作区的修改
+git reset --hard HEAD^    # 撤销提交、暂存区和工作区的修改
+``` 
+
 ### 删除文件
 
 ```
@@ -184,26 +192,6 @@ git stash clear   # 删除所有的 stash 记录
 ```
 
 ## 工作流操作
-
-### 撤销操作
-```
-# 修改上一次提交（快照）
-git commit --amend
-
-# 撤销暂存区中对某个文件的修改
-git restore --staged <file>
-
-# 撤销工作目录中对某个文件的修改
-git restore <file>
-
-# 清除未跟踪的文件
-git clean -fd <file>
-
-# 如果已经add但是未提交
-git reset        # 取消已暂存
-git restore .    # 还原改动
-git clean -fd    # 删除未追踪文件和目录
-```
 
 ### Tag 管理
 

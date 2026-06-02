@@ -397,6 +397,11 @@ Ingress 支持多种路由方式：
 
 ## 常见操作
 
+### 判断本机K8S是否正常
+```
+systemctl status kubelet    # 查看 kubelet 服务状态 
+```
+
 ### 查看K8S状态
 ```
 kubectl cluster-info    # 查看集群信息
@@ -435,6 +440,19 @@ kubectl rollout status deployment <deployment-name>  # 查看滚动更新状态
 kubectl rollout history deployment <deployment-name>  # 查看更新历史
 kubectl rollout undo deployment <deployment-name>  # 回滚到上一个版本
 kubectl delete deployment <deployment-name>  # 删除Deployment(会删除对应的Pod)
+```
+
+### 查看Node资源
+```
+kubectl top nodes  # 查看节点资源使用情况
+kubectl describe node <node-name>  # 查看节点的详细描述，包括资源分配
+```
+
+### 添加一个POD
+```
+1. 上传pod的image到集群中的image registry；或者上传到K8S使用的容器运行时中。
+2. 创建一个pod的yaml文件，指定image和其他配置。
+3. 使用kubectl apply -f pod.yaml来创建pod。
 ```
 
 # Kubectl
