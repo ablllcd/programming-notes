@@ -109,9 +109,15 @@ export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
 
 ### grep命令
 `grep` 是 Linux 系统中用于在文本文件中搜索特定字符串或模式的命令行工具。它可以根据用户提供的模式（通常是正则表达式）在文件中查找匹配的行，并将这些行输出到终端。
+
 **常用选项**
 - `-i`：忽略大小写进行匹配。
 - `-r`：递归搜索目录中的文件。
+
+**正则表达式**
+- `.`：匹配任意单个字符。
+- `*`：匹配前一个字符零次或多次。
+- `^`：匹配行的开头。
 
 ## 磁盘操作
 
@@ -310,6 +316,12 @@ ip route | grep default  # 显示默认路由
 ```bash
 sudo ip addr add 192.168.1.100/24 dev eth0  # 临时添加IP地址
 sudo ip addr del 192.168.1.100/24 dev eth0  # 临时删除IP地址
+```
+
+### 临时修改网关
+```bash
+ip route del default    # 删除当前默认路由
+ip route add default via <新网关IP> dev <网卡名称>  # 添加新的默认路由
 ```
 
 ### 查看端口占用

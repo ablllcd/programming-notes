@@ -419,6 +419,7 @@ kubectl logs <pod-name>  # 查看Pod的日志
 kubectl exec -it <pod-name> -- /bin/bash  # 进入Pod的交互式终端
 kubectl exec <pod-name> -- command  # 在Pod中执行命令
 kubectl delete pod <pod-name>  # 删除Pod(会被Deployment等控制器自动重建)
+kubectl delete pod <pod-name> --grace-period=0 --force  #强制删除Pod
 ```
 
 ### 操作Namespace
@@ -440,6 +441,14 @@ kubectl rollout status deployment <deployment-name>  # 查看滚动更新状态
 kubectl rollout history deployment <deployment-name>  # 查看更新历史
 kubectl rollout undo deployment <deployment-name>  # 回滚到上一个版本
 kubectl delete deployment <deployment-name>  # 删除Deployment(会删除对应的Pod)
+```
+
+### 操作DaemonSet
+```
+kubectl get daemonsets  # 查看DaemonSet状态
+kubectl describe daemonset <daemonset-name>  # 查看DaemonSet的详细描述
+kubectl delete daemonset <daemonset-name>  # 删除DaemonSet(会删除对应的Pod)
+kubectl delete -f daemonset.yaml  # 根据yaml文件删除DaemonSet
 ```
 
 ### 查看Node资源
