@@ -411,6 +411,15 @@ kubectl get pods        # 查看Pod状态
 kubectl get svc         # 查看服务状态
 ```
 
+### 删除Node
+```
+kubectl cordon <node-name>  # 标记节点为不可调度
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data  # 驱逐节点上的Pod，准备删除节点
+kubectl delete node <node-name>  # 删除节点
+kubectl get pods --all-namespaces --field-selector spec.nodeName=<node-name> -o name | xargs kubectl delete --force --grace-period=0 # 有时NODE以及完全失去联系，无法drain,只能获取 node 上所有 Pod 的名字，然后强制删除
+```
+
+
 ### 操作Pod
 ```
 kubectl get pods -o wide  # 查看Pod的详细信息

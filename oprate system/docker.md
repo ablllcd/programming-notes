@@ -67,6 +67,13 @@ docker kill container   //强制停止
 --env [key]=[value]  // 设置环境变量
 ```
 
+### 删除容器
+```
+docker rm [container]  // 删除已停止的容器
+docker rm -f [container]  // 强制删除正在运行的容器
+docker container prune  // 删除所有已停止的容器
+```
+
 ### 进入容器
 
 ```bash

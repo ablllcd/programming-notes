@@ -229,6 +229,7 @@ gzip file  # 将文件压缩为 .gz 文件
 4. 解压 `.zip` 文件
     ```bash
     unzip file.zip
+    unzip -d /path/to/destination file.zip  # 解压到指定目录
     ```
 
 5. 解压 `.rar` 文件
