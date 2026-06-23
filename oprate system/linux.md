@@ -103,6 +103,34 @@ env | grep VAR_NAME       # 查找包含 VAR_NAME 的环境变量
 export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
 ```
 
+## 用户管理
+
+### 查看用户信息
+```bash
+cat /etc/passwd  # 显示系统中的用户信息
+cat /etc/group   # 显示系统中的用户组信息
+id username      # 显示指定用户的UID、GID和所属组信息
+groups username  # 显示指定用户所属的所有组
+```
+
+### 编辑用户
+```bash
+sudo adduser username  # 创建新用户并设置密码
+sudo userdel username  # 删除用户
+sudo passwd username   # 修改用户密码
+```
+
+### 修改用户权限
+```bash
+sudo usermod -aG groupname username  # 将用户添加到指定组
+sudo usermod -G groupname username     # 将用户的组设置为指定组（会覆盖原有组）
+sudo usermod -aG sudo username        # 将用户添加到 sudo 组，赋予管理员权限
+```
+
+### 切换用户
+```bash
+su - username  # 切换到指定用户并加载其环境变量
+```
 
 
 ## 文本操作
@@ -121,6 +149,29 @@ export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
 
 ## 磁盘操作
 
+### 分区表类型
+
+1. MBR（Master Boot Record）：传统的分区表类型，支持最多4个主分区或3个主分区加1个扩展分区。每个分区最大支持2TB。
+
+2. GPT（GUID Partition Table）：现代的分区表类型，支持更多的分区（理论上最多128个）和更大的磁盘（超过2TB）。GPT使用GUID来标识分区，提供更好的数据完整性和恢复能力。
+
+### 查看分区表
+```bash
+sudo parted -l # 通过Partition Table 字段查看分区表类型
+sudo fdisk -l  # 通过Disklabel type字段查看分区表类型
+```
+
+### 文件系统类型
+
+1. ext4：Linux系统中`最常用`的文件系统，支持大文件和大分区，具有较好的性能和稳定性。但是Windows系统无法原生识别ext4文件系统，需要第三方工具才能访问。
+
+2. NTFS：Windows系统中常用的文件系统，支持大文件和大分区，但在Linux上通常以只读方式挂载。
+
+3. FAT32: 兼容性较好，适用于U盘和移动存储设备，可以被Linux系统和Windows系统读取，但不支持大于4GB的单个文件。
+
+4. exFAT: 兼容性较好，适用于U盘和移动存储设备，可以被Linux系统和Windows系统读取，支持大于4GB的单个文件。
+
+
 ### 查看磁盘用量
 1. `df` 命令 - 显示文件系统磁盘空间使用情况
    ```bash
@@ -136,23 +187,71 @@ export VAR_NAME=value  # 设置环境变量 VAR_NAME 的值为 value
    du -sh /path # 显示指定目录总大小
    du -h --max-depth=1 /path  # 仅显示第一级子目录的大小
    ```
-
-3. `fdisk` 命令 - 查看磁盘分区
+### 查看磁盘以及分区信息
+1. `fdisk` 命令 - 查看磁盘分区（较详细）
    ```bash
    sudo fdisk -l  # 列出所有磁盘的分区表
    ```
 
-4. `lsblk` 命令 - 以树状列出所有块设备
+2. `lsblk` 命令 - 以树状列出所有块设备（较直观）
    ```bash
    lsblk         # 列出所有块设备
    lsblk -f      # 显示文件系统信息
    ```
 
-5. `ncdu` 命令 - 交互式磁盘使用分析器
+3. `parted` 命令 - 查看磁盘分区
    ```bash
-   # 安装：sudo apt-get install ncdu
-   ncdu /path    # 分析指定路径的磁盘占用
+   sudo parted -l  # 列出所有磁盘的分区表
    ```
+
+4. `blkid` 命令 - 显示块设备的UUID和文件系统类型
+   ```bash
+   sudo blkid     # 显示所有块设备的UUID和文件系统类型
+   ```
+
+### parted 用法
+
+```bash
+sudo parted /dev/sdX  # 指出要操作的磁盘
+
+(parted) print  # 显示磁盘分区信息
+
+(parted) mkpart primary ext4 1MiB 100%  # 创建一个新的主分区，使用ext4文件系统，从1MiB开始到磁盘末尾
+
+(parted) rm 1  # 删除分区1
+
+(parted) resizepart 1 1MiB 50%  # 将分区1的大小调整为从1MiB到磁盘的50%
+
+(parted) resizepart 2 80GB # 将分区2的大小(结束位置）调整为80GB
+
+### 缩小磁盘分区
+
+1. 修改磁盘前，要保证磁盘没有被挂载/使用，所以通常以live CD的方式进入系统来修改磁盘分区。
+
+2. 先缩小文件系统的大小 (防止文件系统超过分区大小)
+    ```bash
+    sudo e2fsck -f /dev/sdXn  # 检查文件系统完整性，构建空闲空间地图
+    sudo resize2fs /dev/sdXn size  # 将文件系统缩小到指定大小（size可以是K、M、G等单位）
+    ```
+
+3. 再缩小分区的大小
+    ```bash
+    sudo parted /dev/sdX  # 使用parted工具调整分区大小
+    ```
+
+### 扩展磁盘分区
+
+1. 无需卸载磁盘，可以在系统运行时直接扩展分区。
+
+2. 先扩展分区的大小
+    ```bash
+    sudo parted /dev/sdX  # 使用parted工具调整分区大小
+    ```
+
+3. 再扩展文件系统的大小
+    ```bash
+    sudo resize2fs /dev/sdXn  # 将文件系统扩展到分区的最大大小
+    ```
 
 ## 文件操作
 
