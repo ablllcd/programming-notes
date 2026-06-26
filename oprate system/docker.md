@@ -24,21 +24,36 @@ Docker分别提供了GUI和命令行来允许用户使用。
 
 # 基本操作
 ## 镜像
-````
-// 查看镜像
+
+### 查看镜像
+```
 docker images
+docker history [imageid] //查看镜像的历史版本
+```
 
-// 下载删除
+### 修改镜像TAG
+```
+docker tag [imageid] [newImageName]
+```
+
+### 下载镜像
+```
 docker pull [image]
-docker rmi [image]
+```
 
-// image打包 和 导入
+### 删除镜像
+```
+docker rmi [image]
+docker image prune  //删除所有dangling镜像(dangling image是指没有被任何容器使用的镜像)
+```
+
+
+### 导入导出镜像
+```
+// 不同版本的docker打包image的格式可能不同，导致无法在不同版本的docker之间进行image的导入和导出。
 docker save -o [targetPath] [image]
 docker load -i [inputPath]
-````
-
-### 注意事项
-* 不同版本的docker打包image的格式可能不同，导致无法在不同版本的docker之间进行image的导入和导出。
+```
 
 ## 容器
 
@@ -47,6 +62,7 @@ docker load -i [inputPath]
 docker ps   // 只查看已激活的
 docker ps -a  //查看所有容器
 docker logs [container] //查看容器日志
+docker ps -a --filter "ancestor=sco-orch:latest"  //查看指定镜像的容器
 ```
 
 ### 创建/删除/启动/停止容器

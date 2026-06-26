@@ -460,6 +460,30 @@ kubectl delete daemonset <daemonset-name>  # 删除DaemonSet(会删除对应的P
 kubectl delete -f daemonset.yaml  # 根据yaml文件删除DaemonSet
 ```
 
+### 操作StatefulSet
+```
+kubectl get statefulsets  # 查看StatefulSet状态
+kubectl describe statefulset <statefulset-name>  # 查看StatefulSet的详细描述
+kubectl delete statefulset <statefulset-name>  # 删除StatefulSet(会删除对应的Pod)
+kubectl delete -f statefulset.yaml  # 根据yaml文件删除StatefulSet
+kubectl scale statefulset <statefulset-name> --replicas=<number>  # 调整副本数
+```
+
+### 操作PVC
+注意：
+
+* Deployment的PVC被删除了不一定会自动重建，StatefulSet的PVC被删除了会自动重建。
+* 删除PVC之前要停止POD,否则删除流程会被卡住。停止Pod通常通过将Deployment/StatefulSet的副本数scale为0来实现。
+
+```
+kubectl get pvc  # 查看PVC状态
+kubectl describe pvc <pvc-name>  # 查看PVC的详细描述
+kubectl get pvc --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.metadata.annotations.'volume\.kubernetes\.io/selected-node',STATUS:.status.phase  # 查看PVC状态和所在节点
+```
+
+
+
+
 ### 查看Node资源
 ```
 kubectl top nodes  # 查看节点资源使用情况
