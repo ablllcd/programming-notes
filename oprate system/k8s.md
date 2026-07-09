@@ -93,7 +93,6 @@ Kubernetes 集群由一个控制平面和一组用于运行容器化应用的工
 
 Deployment 是一种更高级的控制器，它管理着 ReplicaSet，而 ReplicaSet 又管理着 Pod。我们通常直接使用 Deployment 来管理应用的部署和更新，而不直接操作 ReplicaSet 或 Pod。
 
-#### 常用
 
 ### Namespace
 - 逻辑隔离资源
@@ -450,6 +449,14 @@ kubectl rollout status deployment <deployment-name>  # 查看滚动更新状态
 kubectl rollout history deployment <deployment-name>  # 查看更新历史
 kubectl rollout undo deployment <deployment-name>  # 回滚到上一个版本
 kubectl delete deployment <deployment-name>  # 删除Deployment(会删除对应的Pod)
+kubectl delete -f deployment.yaml  # 根据yaml文件删除Deployment
+kubectl apply -f deployment.yaml  # 根据yaml文件创建或更新Deployment
+```
+
+### 操作Service
+```
+kubectl port-forward -n default service/sco-harbor-harbor-core 8080:80    # 临时将Service的80端口转发到本地8080端口
+kubectl patch service sco-harbor-harbor-core -p '{"spec":{"type":"NodePort"}}'  # 将Service类型修改为NodePort
 ```
 
 ### 操作DaemonSet
@@ -480,9 +487,6 @@ kubectl get pvc  # 查看PVC状态
 kubectl describe pvc <pvc-name>  # 查看PVC的详细描述
 kubectl get pvc --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.metadata.annotations.'volume\.kubernetes\.io/selected-node',STATUS:.status.phase  # 查看PVC状态和所在节点
 ```
-
-
-
 
 ### 查看Node资源
 ```

@@ -202,6 +202,14 @@ DESCRIBE TABLE my_keyspace.users;
 ```
 该命令会显示表的列、主键、索引等详细结构信息。
 
+## 集群操作
+
+### 查看集群状态
+```cqlsh
+SELECT cluster_name, release_version, data_center, rack, bootstrapped FROM system.local;    # 查看本地节点信息
+SELECT peer, data_center, rack, release_version FROM system.peers;          # 查看集群中其他节点信息
+```
+
 ## 列的更改
 
 Cassandra 支持对表的列进行更改。你可以使用 `ALTER TABLE` 语句添加新列或删除已有列，但不能直接修改已有列的数据类型（需要先删除再添加）。常见操作如下：

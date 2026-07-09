@@ -183,6 +183,8 @@ git restore --staged .    # 放弃暂存区的修改
 ```
 git stash          # 保存当前修改并恢复到上次提交的状态
 git stash save "message"  # 保存当前修改并添加描述信息
+git stash -u       # 保存当前修改和未跟踪文件，并恢复到上次提交的状态
+git stash -u -m "message"  # 保存当前修改和未跟踪文件，并添加描述信息
 git stash list    # 查看所有保存的修改
 git stash apply   # 恢复最近一次保存的修改，但不删除 stash 记录
 git stash apply stash@{n}  # 恢复指定的修改
