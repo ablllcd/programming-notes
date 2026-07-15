@@ -394,6 +394,119 @@ Ingress 支持多种路由方式：
 ④ Pod (api-service-xxx) 处理请求并返回响应
 ```
 
+#### 7. Ingress 输出讲解
+```
+root@node1:~# kubectl get ingress
+NAME                        CLASS    HOSTS               ADDRESS                   PORTS     AGE
+orch-ingress                <none>   orch.astri.local    10.168.0.100,10.168.0.5   80        39d
+sco-harbor-harbor-ingress   <none>   core.harbor.local   10.168.0.100,10.168.0.5   80, 443   39d
+```
+
+* Name：Ingress 资源名称
+* Class：Ingress Controller 类别，若为空则使用默认 Controller
+* Hosts：Ingress 规则中定义的域名(也就是这个域名的请求会被Ingress Controller处理)
+* Address：Ingress Controller 的访问地址，发向这个地址的请求会被Ingress Controller处理
+* Ports：Ingress Controller 监听的端口，发向这个端口的请求会被Ingress Controller处理
+
+一句话来说：客户端访问 ADDRESS:PORTS 时（客户端所用的DNS解析 Host 到 ADDRESS），只要 HTTP 请求头中的 Host 字段匹配了 HOSTS 列表里的域名，这个请求就会被该 Ingress 资源处理并转发。
+
+
+### 数据存储类型
+
+在K8S中，POD数据存储有以下几种类型：
+* EmptyDir：临时存储，POD生命周期内有效，POD删除后数据丢失
+* HostPath：将宿主机的目录挂载到POD中，POD删除后数据仍然存在
+* PersistentVolume（PV）：集群级别的存储资源，POD可以通过PersistentVolumeClaim（PVC）来申请使用，POD删除后数据仍然存在
+
+#### HOSTPATH与PV的区别
+
+HOSTPATH是将宿主机的目录挂载到POD中，POD删除后数据仍然存在，实现了持久化存储，但它有一个严重的缺点：它依赖于宿主机的目录，如果POD被调度到其他节点上，数据就无法访问了。
+
+而 PV是集群级别的存储资源，可以理解为DOCKER VOLUME，它不依赖于宿主机的目录。 POD可以通过PVC来申请使用PV，实现了持久化存储和POD调度的解耦。 PV可以使用第三方存储插件（如NFS、Ceph、GlusterFS等）来实现数据云存储，或者单独磁盘的存储。
+
+哪怕PV使用的是LOCALHOST的本地磁盘存储，它也优于HOSTPATH，因为POD调度时可以感知到该POD对应的PV所在的NODE，从而将POD调度到合适的节点上。而HOSTPATH无法感知POD调度到的节点是否有对应的目录，从而导致POD可能调度到错误的节点上.
+
+
+#### PV与PVC的关系
+
+PV（PersistentVolume）是集群级别的存储资源，而PVC（PersistentVolumeClaim）是POD对存储资源的申请。 PVC是对PV的抽象，POD通过PVC来使用PV，实现了存储资源的动态绑定和解耦。
+
+当创建PVC时，K8S会根据PVC的请求条件（如存储大小、访问模式、存储类等）去匹配集群中可用的PV。如果找到符合条件的PV，就会将PVC绑定到该PV上，从而POD就可以通过PVC来访问PV提供的存储资源。如果没有符合条件的PV，PVC会处于Pending状态，也可能触发动态存储供应（Dynamic Provisioning），由存储类（StorageClass）自动创建一个新的PV来满足PVC的请求。
+
+用更通俗的解释来说： PVC是POD对存储资源的“需求”，而PV是集群提供的“供应”，是实际的存储资源。POD通过PVC来申请使用PV，实现了存储资源的动态绑定和解耦。
+
+#### StorageClass的作用
+
+StorageClass是K8S中创建存储资源的模板（方式），当添加openEBS / NFS 等存储插件时，它们会提供自己的StorageClass，当用户使用它们的StorageClass创建PVC时，K8S会根据StorageClass的配置去找到存储插件来动态创建PV，从而满足PVC的请求。 
+
+#### PV的参数讲解
+
+```
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS     CLAIM                                                                                                            STORAGECLASS       REASON   AGE
+pvc-0a9cd246-9ecf-482a-9556-e4b4a0639a3f   1Gi        RWO            Delete           Bound      default/data-sco-harbor-harbor-redis-0                                                                           openebs-hostpath            18d
+pvc-19821413-c000-47d5-be61-a06b33b1e692   30Gi       RWO            Delete           Bound      default/elasticsearch-master-elasticsearch-master-0                                                              openebs-hostpath            3
+```
+
+* name：PV的名称
+* capacity：PV的容量
+* access modes：PV的访问模式，
+  * RWO表示ReadWriteOnce，表示该PV只能被一个节点以读写方式挂载
+  * ROX表示ReadOnlyMany，表示该PV可以被多个节点以只读方式挂载
+  * RWX表示ReadWriteMany，表示该PV可以被多个节点以读写方式挂载
+* reclaim policy：PV的回收策略，
+  * Retain表示保留，POD删除后PV不会被删除，需要手动删除
+  * Recycle表示回收，POD删除后PV会被清空数据并重新使用
+  * Delete表示删除，POD删除后PV会被删除
+* status：PV的状态，
+  * Available表示可用，表示该PV没有被绑定到PVC
+  * Bound表示已绑定，表示该PV已经被绑定到PVC
+  * Released表示已释放，表示该PV已经被释放，但还没有被回收
+  * Failed表示失败，表示该PV已经失败，需要手动处理
+* claim：PV绑定的PVC名称
+* storageclass：PV的存储类，表示该PV使用的存储插件
+
+
+### Helm
+
+helm 是 Kubernetes 的包管理工具，类似 npm 或 apt。它将 Kubernetes 资源打包成一个 Chart，方便用户安装、升级和卸载应用。
+
+没有 Helm 时，你要在 K8s 上部署一个 Nginx，需要手写 Deployment、Service、Ingress、ConfigMap 等四五个 YAML 文件。而有了 Helm，你只需要执行一条命令：helm install nginx，它就会把背后的几十行 YAML 自动生成并提交给 K8s。
+
+HELM它负责把一堆复杂的 YAML 文件打包成一个整体（Chart），并提供一个统一的接口（values.yaml）让你可以一键修改所有配置（比如改版本号、改镜像地址、改副本数）。
+
+Helm 的核心概念包括：Chart、Release、Repository。
+
+#### Chart: 软件的“安装包”
+
+Chart 是 Helm 使用的软件包格式，相当于我们熟悉的 .deb 或 .rpm 包。它包含了一组描述相关 Kubernetes 资源的 YAML 模板文件。
+
+一个 Chart 的目录结构通常如下：
+
+* Chart.yaml：包含 Chart 自身信息的文件，如名称、版本等。
+
+* values.yaml：Chart 的默认配置值。
+
+* templates/：模板目录，存放 Kubernetes 清单文件的模板。
+
+* charts/：存放此 Chart 依赖的其他子 Chart。
+
+#### Release: 运行中的“软件实例”
+
+当你在 Kubernetes 集群中安装一个 Chart 时，就会创建一个 Release。可以把它理解为“运行中的软件实例”。
+
+核心作用：Release 代表 Chart 的一次具体部署。即使使用同一个 Chart（比如 Nginx），你也可以通过不同的配置（values.yaml）在集群中创建多个 Release（比如一个用于测试，一个用于生产）。
+
+状态管理：Helm 会跟踪每个 Release 的历史版本（Revision）。每次升级或回滚，Helm 都会创建一个新的 Secret 对象来存储该版本的所有信息，从而实现版本回滚功能.
+
+#### Repo：存放 Chart 的“软件仓库”
+Repo（Chart Repository）是一个用于存储和分享打包好的 Chart 的 HTTP 服务器。可以把它想象成一个“软件源”。
+
+核心结构：一个仓库的核心是其根目录下的 index.yaml 文件，这个文件相当于所有 Chart 的清单和索引。
+
+官方与私有：你可以使用公共仓库，比如由 CNCF 维护的 Artifact Hub。为了安全和合规，企业也常常会搭建自己的私有仓库，常用的方案包括 ChartMuseum、Harbor 或 Nexus.
+
+
+
 ## 常见操作
 
 ### 判断本机K8S是否正常
@@ -486,6 +599,28 @@ kubectl scale statefulset <statefulset-name> --replicas=<number>  # 调整副本
 kubectl get pvc  # 查看PVC状态
 kubectl describe pvc <pvc-name>  # 查看PVC的详细描述
 kubectl get pvc --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.metadata.annotations.'volume\.kubernetes\.io/selected-node',STATUS:.status.phase  # 查看PVC状态和所在节点
+```
+
+### 操作Ingress
+```
+kubectl get ingress  # 查看Ingress状态
+kubectl get ingress -o yaml  # 查看Ingress的yaml配置
+kubectl describe ingress <ingress-name>  # 查看Ingress的详细描述
+kubectl delete ingress <ingress-name>  # 删除Ingress
+kubectl delete -f ingress.yaml  # 根据yaml文件删除Ingress
+kubectl apply -f ingress.yaml  # 根据yaml文件创建或更新Ingress
+```
+
+### 操作Helm
+```
+helm list # 查看已安装的Release
+helm repo list # 查看已添加的Chart仓库
+helm search repo <chart-name> --versions  # 搜索Chart及其版本
+helm repo add <repo-name> <repo-url>  # 添加Chart仓库
+helm repo update  # 更新Chart仓库
+helm install <release-name> <chart-name> --namespace <namespace> --values <values.yaml>  # 安装Chart
+helm upgrade <release-name> <chart-name> --namespace <namespace> --values <values.yaml>  # 升级Chart
+helm uninstall <release-name> --namespace <namespace>  # 卸载Chart
 ```
 
 ### 查看Node资源
