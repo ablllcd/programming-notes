@@ -402,6 +402,24 @@ network:
 sudo netplan apply
 ```
 
+### 修改网口名称
+```bash
+# 1. 查看要修改的网口MAC地址
+ip a
+
+# 2. 编辑/创建配置文件
+nano /etc/udev/rules.d/10-persistent-net.rules
+
+# 3. 添加规则，格式如下：
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="<MAC地址>", NAME="<新网口名称>"
+
+# 4. 重载udev规则
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# 5. 重启
+reboot
+```
+
 ### 查看网络配置
 ```bash
 ifconfig          # 显示网络接口配置
@@ -410,6 +428,13 @@ ip link show      # 显示网络接口的状态
 ip a              # 显示所有网络接口信息
 ip route show      # 显示路由表
 ip route | grep default  # 显示默认路由
+```
+
+### 监控网络变化
+```bash
+watch -n 1 "ip addr show"  # 每秒刷新显示网络接口信息
+watch -n 1 "ip route show"  # 每秒刷新显示路由表
+ip monitor link      # 实时监控网络接口状态变化
 ```
 
 ### 临时添加/删除IP地址
