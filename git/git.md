@@ -129,6 +129,11 @@ git push <remote> <branch>
 
 创建.gitignore，在文件中声明要忽略的文件，可以使用正则表达式。
 
+```
+# 忽略整个目录
+dir/
+```
+
 ## 撤销操作
 
 ### 本地提交了，但是还没有 push 到远程仓库
@@ -379,6 +384,30 @@ git config --global credential.helper cache
 git config --global credential.helper store
 ```
 
+# Git Message 规范
+
+## Conventional Commits 约定式提交
+
+一次提交只做一件事，提交信息的格式如下：
+
+```
+<type>(<scope>): <subject>
+```
+
+* Type: 提交的类型，常见的有：
+  * feat: 新功能
+  * fix: 修复 bug
+  * docs: 文档更新
+  * style: 代码格式（不影响功能，例如空格、分号等）
+  * refactor: 重构（既不是新增功能，也不是修复 bug）
+  * test: 添加测试
+  * chore: 构建过程或辅助工具的变动（不影响源文件、测试用例等）
+
+* Scope: 提交的范围，通常是模块或功能的名称，可以省略。
+
+* Subject: 提交的简短描述，使用动词的原形，首字母小写，不超过 50 个字符。
+
+
 
 
 # 第三方软件
@@ -417,3 +446,4 @@ git config --global credential.helper store
     ```
     git clone git@[Host别名]:path/repository.git
     ```
+

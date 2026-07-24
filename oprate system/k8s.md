@@ -64,7 +64,268 @@ Kubernetes 集群由一个控制平面和一组用于运行容器化应用的工
 ### 客户端工具
 - **kubectl**：命令行工具，用于与 Kubernetes API Server 交互。我们可以使用 kubectl 来部署应用、查看和管理集群资源、以及调试应用程序。（其不属于 Kubernetes 集群的一部分，但它是与 Kubernetes 交互的主要工具。）
 
+### API SERVER 于 etcd 的关系
+
+在一些文章中，往往会将etcd和API SERVER混为一谈，说存储数据到API SERVER，这其实是因为：`读写ETCD必须经过 API Server`:
+1. API Server 是唯一的入口。etcd 没有直接暴露给集群里任何组件——kubelet、scheduler、kube-proxy、你的 operator……谁都不能直连 etcd。全都走 API Server。
+2. API Server 是唯一的写入者和校验者。数据写到 etcd 之前，API Server 要做：
+    - 认证 — 你是谁？
+    - 鉴权 — 你有权限干这事吗？
+    - 准入控制 — Admission Webhook 要不要拦一下？
+    - 校验 — YAML 格式对不对？必填字段有没有？CRD schema 通得过吗？
+
+而数据在etcd持久化存储，也在API SERVER的内存中缓存：
+* 数据实际被转为键值对，持久化存储在 etcd 里。
+* API Server 启动时会从 etcd 全量加载数据到内存缓存，后续通过 Watch 机制保持缓存和 etcd 同步。大部分读请求直接走缓存，不需要每次都查 etcd。
+
+
 ## 核心概念
+
+### K8s Resource — 一切的基础
+
+Kubernetes 里的一切都是一个资源（也叫 API 对象），本质上就是个结构固定的 YAML/JSON，存在 etcd 里，通过 API Server 读写。
+
+最简单的例子——一个 Pod：
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+    - name: app
+      image: nginx
+
+每个 K8s 资源都共享这三个顶层字段：
+
+- apiVersion — 属于哪个 API 组/版本（v1 是核心组，还有 apps/v1、batch/v1 等）
+- kind — 资源类型（Pod、Service、Deployment...）
+- metadata — 名称、命名空间、标签、注解
+
+再加上两个领域相关部分：
+
+- spec — 你想要的期望状态
+- status — 系统观测到的实际状态（由控制器写入,自己写yaml时只写spec）
+
+你 kubectl apply -f pod.yaml 就是在 API Server (etcd) 里写了一条期望状态记录。Worker 节点上的 kubelet watch 到分配给本节点的 Pod，看到 spec，启动容器让它匹配上。这就是内建的"控制器循环"。具体流程是：
+
+```
+  kubectl apply -f pod.yaml
+           │
+           ▼
+      API Server
+      (etcd)
+           │
+           ├── 创建 Pod 对象 ← 这步已经"创建"了（在 etcd 里）
+           │
+           ├── 调度器 (kube-scheduler)
+           │    watch 到未调度的 Pod
+           │    选一个合适的 Node
+           └── 目标 Node 上的 kubelet
+                watch 到 nodeName 指向自己的 Pod
+                读 spec.containers
+                调用容器运行时 (containerd/docker/cri-o)
+                实际启动容器
+```
+
+### CRD — 扩展 K8s API
+
+CustomResourceDefinition 让你在 K8s API 里引入全新的 kind，有自己的 schema、endpoint 和生命周期。你把 CRD YAML apply 到集群后，就可以：
+
+kubectl get hostinfos
+kubectl describe hostinfo node-1
+
+跟 kubectl get pods 完全一样。
+
+```
+# CRD 本身也是一个 K8s 资源，类型就是 CustomResourceDefinition
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  # 命名规则: <复数名>.<api组名>
+  name: hostinfos.mp.astri.org
+
+spec:
+  # (1) API 组 —— 你的资源属于哪个 API 分组
+  group: mp.astri.org
+
+  # (2) 资源名字 —— kubectl 怎么叫它
+  names:
+    kind: HostInfo        # YAML 里写 kind: HostInfo
+    plural: hostinfos     # kubectl get hostinfos
+    singular: hostinfo    # kubectl get hostinfo
+
+  # (3) 作用域 —— Namespaced: 按命名空间隔离 / Cluster: 集群全局一个
+  scope: Namespaced
+
+  # (4) 版本列表 —— 可以同时支持多个版本
+  versions:
+    - name: v1            # apiVersion 里的版本号
+      served: true        # 这个版本启用（可读写）
+      storage: true       # 存 etcd 用这个版本（只能一个版本为 true）
+
+      # (5) schema —— 定义这个资源的字段结构
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                ports:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:        { type: string }
+                      macAddress:  { type: string }
+                      ipList:      { type: array, items: { type: string } }
+                      enable:      { type: boolean }
+              required:            # ← 必填：spec 下 ports 不能缺
+                - ports
+            status:
+              type: object
+              properties:
+                online:        { type: boolean }
+                offlineReason: { type: string }
+              required:
+                - online
+```
+
+对应apply 的CR文件是：
+```
+ # apiVersion = <group>/<version>
+  apiVersion: mp.astri.org/v1    # ← 来自 CRD 的 group + versions[].name
+  kind: HostInfo                  # ← 来自 CRD 的 names.kind
+  metadata:
+    name: node1                   # 资源实例的名字
+    namespace: default            # Namespaced 的 CRD 需要 namespace
+  spec:
+    ports:
+      - name: n6                  # ← 以下字段都在 schema 里定义过
+        macAddress: "aa:bb:cc:dd:ee:01"
+        ipList: ["10.0.0.1/24"]
+        enable: true
+```
+
+### Controller - 根据Resource来执行实际操作
+
+Controller 就是一个程序，watch 一个或多个资源类型，努力让真实世界匹配资源里存的期望状态。
+
+```
+ apply 一个资源 (spec)
+        │
+        ▼
+Controller watch 到变化
+        │
+        ├─ 读 spec（你想要什么）
+        ├─ 查真实世界（现在是什么）
+        ├─ 执行操作让两者趋近
+        └─ 把结果写回 status（现在实际是什么）
+```
+kubelet 本身就是个 controller——它 watch Pod 资源，reconcile 的方式是启动/停止容器。 而对于自定义的CRD，就需要提供自己的Controller。
+
+Controller 没有特殊的格式要求。你可以用 Go、Python、Java、甚至 Bash 脚本来写。K8s 跟 controller 之间的交互就两个渠道：
+
+| 渠道 | 协议 | 方向 |
+| :--- | :--- | :--- |
+| Watch 资源变化 | 调用 K8s REST API（长连接 Watch） | Controller → API Server |
+| 写回 Status | 调用 K8s REST API（PUT /status） | Controller → API Server |
+
+添加自定义Controller的流程也很简单：
+
+1. 创建一个普通程序来执行Controller的逻辑（没有接口要求，可以用任何语言）
+    ```
+      func main() {
+          // 1. 连 API Server（从集群内 Service Account 自动获取凭证）
+          clientset := getInClusterClient()
+
+          // 2. Watch hostinfos 资源
+          watcher, _ := clientset.Watch("mp.astri.org/v1", "hostinfos", "default")
+
+          // 3. 死循环：等事件 → 干活 → 写 status
+          for event := range watcher.ResultChan() {
+              switch event.Type {
+              case "ADDED", "UPDATED":
+                  hi := event.Object.(HostInfo)
+                  // 读 spec
+                  configurePorts(hi.Spec.Ports)
+                  // 写 status
+                  hi.Status.Online = true
+                  clientset.UpdateStatus(&hi)
+              case "DELETED":
+                  cleanupPorts(...)
+              }
+          }
+      }
+    ```
+2. 将程序打包成容器镜像
+3. 部署到 Kubernetes 集群里，通常用 Deployment 来管理 Controller 的副本数和升级
+
+### ClusterRole - ClusterRoleBinding - ServiceAccount - Deployment
+
+k8s 的 RBAC（Role-Based Access Control）机制允许你精细控制谁可以访问哪些资源。核心概念包括：
+- **Role**：定义在某个命名空间内的权限集合
+- **ClusterRole**：定义在整个集群范围内的权限集合
+- **RoleBinding**：将 Role 绑定到用户或组
+- **ClusterRoleBinding**：将 ClusterRole 绑定到用户或组
+- **ServiceAccount**：为 Pod 提供身份认证信息
+
+通俗来说，ClusterRole就是一个角色，它本身定义权限信息； 而ServiceAccount就是一个账号，它属于某个角色； 而Deployment部署时指定ServiceAccount，让POD使用这个账号来访问K8s API Server。
+
+#### Cluster Role
+```
+  rules:
+    - apiGroups: ["mp.astri.org"]     # 作用于哪个 API 组
+      resources: ["*"]                 # 组下哪些资源（* 表示所有）
+      verbs:                           # 允许做什么
+        - get          # 读单个
+        - list         # 读列表
+        - watch        # 长连接监听变化 ← controller 必须有这个才能 watch
+        - create       # 创建
+        - update       # 全量更新
+        - patch        # 部分更新
+        - delete       # 删除
+        - deletecollection  # 批量删除
+```
+翻译成人话："凡是属于 mp.astri.org 这个 API 组的资源，不管是什么类型，想怎么操作都行。"
+
+#### ClusterRoleBinding
+```
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: coremp
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: coremp                     # 绑定哪个 ClusterRole
+  subjects:
+    - kind: ServiceAccount
+      name: coremp                   # 绑定给哪个 ServiceAccount
+      namespace: default
+```
+
+#### ServiceAccount
+```
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: coremp                     # ServiceAccount 名字
+    namespace: default               # 所在命名空间
+```
+
+#### Deployment
+```
+  spec:
+    template:
+      spec:
+        serviceAccountName: coremp   # 这个 Pod 以 coremp 身份运行
+        containers:
+          - name: manager
+            image: coremp:1.0.0
+```
+
 
 ### Pod
 - 最小部署单位
