@@ -286,6 +286,7 @@ git clone -b <分支名> <仓库地址>
 **切换到远程分支：**
 ```
 git checkout -b <branchname> <remote>/<branchname>
+git switch <remoteBranchname>  # git 2.23 之后的版本可以使用 switch 命令
 ```
 
 这是创建一个新的本地分支，并将其设置为跟踪远程分支。之后就可以在本地分支上进行修改和提交了。
