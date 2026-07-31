@@ -308,6 +308,104 @@ public class HelloServlet implements Servlet {
 * 一次会话：浏览器第一次给服务器资源发送请求,会话建立,直到有一方断开为止。断开可能通过：会话过期，浏览器关闭，用户主动登出账号等
 * 注意：Session一词多义，既指会话概念，也指特定的技术
 
+## 浏览器的同源策略
+
+同源策略是浏览器的一个安全规则：限制一个"源"（网页）的脚本，只能访问/修改同一个"源"的资源。
+
+通俗来看，就是在网页A.com中，如果发送网络请求来访问A自己就没有约束；如果发送网络请求来访问B.com，就会受到限制。这里是比较请求的`发起者`和`目的地址`的源是否相同。从而有`同源`和`跨域`的概念。
+
+### 什么是"源"
+
+源 = 协议 + 域名 + 端口，三者完全一致才算同源。
+
+### 同源策略的限制
+
+```
+同源策略（浏览器安全基石）
+    ├── 限制网络请求（Ajax/Fetch）
+    │   └── 解决方式：CORS
+    ├── 限制存储访问（Cookie/LocalStorage）
+    │   └── Cookie 特殊规则：
+    │       ├── Domain 匹配基于"源地址"（我们刚讨论的）
+    │       ├── 默认同源才携带
+    │       └── 跨域需 credentials: 'include' + CORS 配合
+    └── 限制 DOM 访问
+        └── 解决方式：postMessage（用于 iframe 通信）
+```
+
+也就是限制了三类资源的访问：网络请求、存储访问、DOM访问。
+
+### Cookie的Domain
+
+Cookie的Domain是指cookie的作用域，浏览器在发送请求时会根据请求的目的地址和cookie的domain来决定是否携带cookie。
+
+通俗来说，cookie的domain是指cookie的归属网站，在访问该归属网站的资源时，浏览器会尝试携带该cookie；而访问其他网站的资源时，浏览器不会携带该cookie。
+
+#### Cookie的Domain匹配规则
+
+总体来说，cookie的domain匹配规则是：请求的目的地址的域名必须以cookie的domain结尾（尾部匹配）
+
+示例：
+* Cookie Domain=example.com → 匹配 www.example.com ✅
+* Cookie Domain=example.com → 匹配 api.example.com ✅
+* Cookie Domain=example.com → 匹配 example.com ✅
+* Cookie Domain=example.com → 匹配 www.example.org ❌
+
+补充：
+
+* 这里的匹配规则是判断`是否携带cookie`，而不是判断`是否读写cookie`的规则。
+* Domain不能是公共后缀，例如.com、.org、.net、.edu、.gov等。
+
+
+### 是否携带cookie
+
+根据请求的`目的地址`，去浏览器查找`domain`匹配的cookie，它们是准备被携带的；但实际是否携带cookie，还要看额外的约束：
+
+1. 是否同源：如果当前页面的URL和请求的目的地址是同源的，则浏览器会携带Doamin,Path匹配的cookie。（也就是协议，域名，端口都相同）
+2. 是否跨域：如果当前页面的URL和请求的目的地址是跨域的，则浏览器默认不会携带cookie。除非同时满足：
+   * 请求中设置了`credentials: 'include'` （这会要求浏览器携带cookie）
+   * Cookie的SameSite属性是`None`（cookie允许跨域携带）
+   * 服务器响应中设置了`Access-Control-Allow-Credentials: true`，并且
+   * 服务器响应中设置了`Access-Control-Allow-Origin`为请求的源地址（不能是通配符*）
+
+### 服务器（目的地址）是否接收cookie
+
+上述的规则是浏览器是否携带cookie，而服务器是否接收cookie，还要看服务器的设置：
+1. 服务器响应中设置了`Access-Control-Allow-Credentials: true`，并且
+2. 服务器响应中设置了`Access-Control-Allow-Origin`为请求的源地址（不能是通配符*）
+
+### 服务器(目的地址)set-cookie的限制
+
+set-cookie就是服务器告诉浏览器设置cookie的指令，其严格要求只能将domain设置为自己的，不能设置为其它域名；例如api.com的响应中设置set-cookie:Domain=bank.com，浏览器会拒绝这个请求，因为api.com和bank.com不属于同源。
+
+所以添加/修改cookie的规则简单而严格，不存在`跨域`的特殊处理。
+
+以下是set-cookie的规则：
+1. Set-Cookie头必须包含Domain属性，且该属性的值必须是当前请求的域名或其父域名。
+2. Set-Cookie头必须包含Path属性，且该属性的值必须是当前请求的路径或其子路径。
+3. Set-Cookie头可以包含Secure属性，表示该cookie只能通过HTTPS协议传输。
+4. Set-Cookie头可以包含HttpOnly属性，表示该cookie不能通过JavaScript访问。
+5. Set-Cookie头可以包含SameSite属性，表示该cookie的跨站请求策略，可以是Strict、Lax或None。
+
+### 安全与便捷的权衡
+
+总体来说，携带cookie时可以跨域，但设置cookie时不能跨域。从安全角度来说，应该全部要求同源，但是为了便捷性，浏览器允许跨域携带cookie，但要求服务器和客户端都进行设置，增加了使用成本。
+
+便捷场景：
+    
+    1. 前后端分离部署： 前端服务器在web.com，后端服务器在api.com，前端请求后端时需要携带api.com的cookie。
+
+安全场景：
+    
+    问题1： 你浏览器本身存储银行网页的cookie，然后你访问了恶意网址A，恶意网址向bank.con发送请求，携带了bank.com的cookie （支持跨域导致的问题）
+
+    解决方法：bank.com的服务器设置了`Access-Control-Allow-Origin: webA.com`，浏览器就会拒绝携带cookie的请求。
+
+    2： 你访问了恶意网址A(webA.com)，恶意网站A尝试篡改你的银行网页的cookie，A访问自己的服务器apiA.com时响应set-cookie来设置你bank.com的cookie.
+
+    解决方法： 情况不成立，set-cookie的规则要求只能设置自己的域名，不能设置bank.com的cookie。
+
+
 ## Cookie
 
 ### 基本原理
