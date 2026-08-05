@@ -158,6 +158,14 @@ VALUES (uuid(), {
 
 Cassandra 使用 CQL（Cassandra Query Language）进行数据操作，语法类似 SQL。
 
+### 连接到 Cassandra
+```bash
+cqlsh [host] [port] -u [username] -p [password]
+cqlsh -u [username] -p [password]  # 默认连接到本地 Cassandra
+cqlsh -u [username] # 通过交互输入密码
+```
+
+### KeySpace 相关
 **创建键空间：**
 ```sql
 CREATE KEYSPACE my_keyspace WITH REPLICATION = {
@@ -166,6 +174,17 @@ CREATE KEYSPACE my_keyspace WITH REPLICATION = {
 };
 ```
 
+**查看键空间：**
+```sql
+DESCRIBE KEYSPACES;
+```
+
+**使用键空间：**
+```sql
+USE my_keyspace;
+```
+
+### Table 相关
 **创建表：**
 ```sql
 CREATE TABLE my_keyspace.users (
@@ -175,32 +194,23 @@ CREATE TABLE my_keyspace.users (
 );
 ```
 
-**插入数据：**
+**查看表：**
 ```sql
-INSERT INTO my_keyspace.users (user_id, name, age)
-VALUES (uuid(), 'Alice', 30);
+DESCRIBE TABLES;   # 查看所有表
+DESCRIBE TABLE my_keyspace.users; # 查看表结构
 ```
 
-**查询数据：**
+### Row 相关
+
+**CRUD 操作**
 ```sql
+INSERT INTO my_keyspace.users (user_id, name, age) VALUES (uuid(), 'Alice', 30);
 SELECT * FROM my_keyspace.users WHERE user_id = ...;
-```
-
-**更新数据：**
-```sql
 UPDATE my_keyspace.users SET age = 31 WHERE user_id = ...;
-```
-
-**删除数据：**
-```sql
 DELETE FROM my_keyspace.users WHERE user_id = ...;
 ```
 
-**查看表结构：**
-```sql
-DESCRIBE TABLE my_keyspace.users;
-```
-该命令会显示表的列、主键、索引等详细结构信息。
+
 
 ## 集群操作
 

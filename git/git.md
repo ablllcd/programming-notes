@@ -97,7 +97,6 @@ git ls-files #查看暂存区文件
 
 ```
 git add filename
-
 git add -all    # 添加所有文件
 git add .
 ```
@@ -107,7 +106,6 @@ git add .
 ```
 # 会进入message编辑器，查看vim操作指令来编辑
 git commit
-
 git commit -m "message"
 git commit -a -m "message"  # 提交全部文件
 ```
@@ -204,9 +202,7 @@ git stash drop stash@{n}  # 删除指定的 stash 记录
 git stash clear   # 删除所有的 stash 记录
 ```
 
-## 工作流操作
-
-### Tag 管理
+## Tag 管理
 
 ```
 # 查看当前tag list
@@ -225,7 +221,7 @@ git tag <tagname> <hashcode>
 git tag -d <tagname>
 ```
 
-### 版本控制
+## 版本控制
 
 参考文献：https:#git-scm.com/book/zh/v2/Git-%E5%B7%A5%E5%85%B7-%E9%87%8D%E7%BD%AE%E6%8F%AD%E5%AF%86.html
 
@@ -308,8 +304,11 @@ git checkout <remote>/<branchname>
 **操作远程分支：**
 
 ```bash
-# 将本地branch分支推送到remote仓库的branch分支
+# 将本地branch分支推送到remote仓库的branch分支； 如果远程仓库没有该分支，则会创建一个新的远程分支
 git push <remote> <branch>
+
+# 创建远程分支后，将本地分支与远程分支关联起来
+git push -u <remote> <branch>
 
 # 删除远程仓库中的分支
 git push <remote> --delete <branch>
