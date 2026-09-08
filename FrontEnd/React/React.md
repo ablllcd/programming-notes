@@ -361,9 +361,22 @@ Redux 是一个用于管理应用状态的 JavaScript 库，通常与 React 一�
 ## 基本概念
 
 1. Store：存储应用的整个状态树。应用中只能有一个 Store。
-2. Action：描述发生了什么的普通 JavaScript 对象。每个 Action 都有一个 type 属性。
-3. Reducer：一个纯函数，接收当前状态和 Action，返回新的状态。
+2. Action：普通 JavaScript 对象，必须有 type 属性来区分，用于描述事件内容。
+3. Reducer：一个纯函数，接收当前状态和 Action，返回新的状态。它负责`存储状态`和`状态更新`。
 4. Dispatch：发送 Action 的方法，用于触发状态更新。
+
+所以是一个 Store中维护多个 Reducer，每个 Reducer 维护一部分状态，Reducer 通过 Action 来更新状态。每个Reducer在注册进Store时都有唯一的名称，Store中根据全部Reducer维护的State结构是：
+```javascript
+// state结构
+{
+  reducerName1: state1,
+  reducerName2: state2,
+  ...
+}
+
+// 访问state的状态
+const state1 = store.getState().reducerName1;
+```
 
 ## 基本用法
 
@@ -372,12 +385,14 @@ Redux 是一个用于管理应用状态的 JavaScript 库，通常与 React 一�
 ```javascript
 import { createStore } from "redux";
 import rootReducer from "./reducers";
-const store = createStore(rootReducer);
+const store = createStore(rootReducer);   // 创建 Redux Store，将Reducer注册进来
 ```
 
 2. 定义 Action：
 
 ```javascript
+// 这里的 increment 和 decrement 是 Action Creator，返回一个 Action 对象
+// Action就是普通的 JavaScript 对象，必须有一个 type 属性，它不需要注册进Redux
 const increment = () => ({ type: "INCREMENT" });
 const decrement = () => ({ type: "DECREMENT" });
 ```
@@ -385,6 +400,8 @@ const decrement = () => ({ type: "DECREMENT" });
 3. 创建 Reducer：
 
 ```javascript
+// 这里counter是一个Reducer函数，他就是创建store时使用的rootReducer
+// 这里的state = 0就是初始状态，也决定了reducer维护的state结构
 const counter = (state = 0, action) => {
   switch (action.type) {
     case "INCREMENT":
@@ -495,7 +512,12 @@ export const { increment, decrement } = counterSlice.actions;
 export default counterSlice.reducer;
 ```
 
-在上述示例中，createSlice 创建了一个名为 "counter" 的 state，包含初始状态和两个 reducers。它自动生成了对应的 Action Creator。其中 `increment` 和 `decrement` 是自动生成的 Action Creator，可以直接导出使用。
+* name: slice 的名称，也是Store中注册的 reducer 的名称
+* initialState: Reducer 的初始状态
+* reducers: 一个对象，包含多个 reducer 函数，每个函数对应一个 Action。
+* actions: createSlice 会根据 reducers 中定义的函数自动生成对应的 Action Creator。
+
+需要特别注意的是，一个slice只有一个reducer函数，这里的increment和decrement只是这个reducer函数中的两个case，而并非两个reducer函数。实际上createSlice会生成type为sliceName/reducerName的action对象，例如这里的increment的type就是counter/increment。
 
 Action Creator 的使用：
 
