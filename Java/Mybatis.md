@@ -9,7 +9,7 @@ Mybatis本身是对JDBC的封装，使得一些操作更加简单。
 
 **0. 添加依赖**
 
-```
+```xml
 <dependencies>
     <dependency>
         <groupId>org.mybatis</groupId>
@@ -41,7 +41,7 @@ Mybatis本身是对JDBC的封装，使得一些操作更加简单。
 **1. 创建mybatis 配置文件**
 
 resources/mybatis-config.xml
-```
+```xml
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-config.dtd">
@@ -71,7 +71,7 @@ resources/mybatis-config.xml
 ```
 
 resources/mySQL.properties
-```
+```xml
 mysql.driver=com.mysql.cj.jdbc.Driver
 mysql.url=jdbc:mysql://localhost:3306/itheima
 mysql.username=root
@@ -80,7 +80,7 @@ mysql.password=123456
 
 **2. 创建Mapper接口**
 
-```
+```java
 public interface EmployeeMapper {
     public List<Employee> getAllUsers();
 }
@@ -91,7 +91,7 @@ public interface EmployeeMapper {
 注意：配置文件中的namespace用来指明要映射的Mapper类；id用来自指明Mapper类中对应的方法
 
 resources/mappers/EmployeeMapper.xml
-```
+```xml
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
@@ -106,7 +106,7 @@ resources/mappers/EmployeeMapper.xml
 
 **4. 创建pojo对象**
 
-```
+```java
 @Data
 public class Employee {
     int uid;
@@ -150,7 +150,7 @@ public class EmployeeTest {
 ## 配置文件 （配置连接信息）
 
 ### Mybatis配置文件--Environment
-```
+```xml
 <configuration>
     <environments default="development">
         <environment id="development">
@@ -173,7 +173,7 @@ Environment是用来指明数据库连接的，每个environment都可以指定�
 
 ### Mybatis配置文件--Mappers
 
-```
+```xml
 <configuration>
     <mappers>
         <mapper resource="mappers/EmployeeMapper.xml"/>
@@ -191,10 +191,10 @@ Environment是用来指明数据库连接的，每个environment都可以指定�
 ## 参数传递（构建SQL语句）
 
 上述代码是将SQL语句直接写死了：
-```
+```java
 public List<Employee> getAllUsers();
 ```
-```
+```xml
 <select id="getAllUsers" resultType="org.example.pojo.Employee">
     select * from employee
 </select>
