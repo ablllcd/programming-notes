@@ -9,7 +9,7 @@ JDBC是Java操作**关系型数据库**的`接口`，其中只是定义了规范
 
 1. 添加依赖
    
-```
+```xml
 <dependency>
 	<groupId>com.mysql</groupId>
 	<artifactId>mysql-connector-j</artifactId>
@@ -19,7 +19,7 @@ JDBC是Java操作**关系型数据库**的`接口`，其中只是定义了规范
 
 2. 编写面向jdbc的代码
    
-````
+````java
 public void testJDBC() throws ClassNotFoundException, SQLException{
 	// 1. 注册驱动
 	Class.forName("com.mysql.cj.jdbc.Driver");
@@ -64,13 +64,13 @@ DriverManagement有两个功能：
 
 **1. 配置驱动类**
 
-```
+```java
 Class.forName("com.mysql.cj.jdbc.Driver");
 ```
 
 这段代码只是利用反射技术将Driver类加载进内存而已，而com.mysql.cj.jdbc.Driver中有个静态代码块：
 
-```
+```java
 public class Driver extends NonRegisteringDriver implements java.sql.Driver {
     public Driver() throws SQLException {
     }
@@ -97,7 +97,7 @@ public class Driver extends NonRegisteringDriver implements java.sql.Driver {
 
 此外还需要指明数据库的用户名和密码:
 
-```
+```java
 String url = "jdbc:mysql://localhost:3306/worker";
 String username = "root";
 String password = "123456";
@@ -110,63 +110,65 @@ Connection connection = DriverManager.getConnection(url, username, password);
 
 1. 创建statement
 
-如果是普通的statement，当只能用字符串拼接来动态构建sql语句，这有sql注入的问题。
-```
-Statement statement = connection.createStatement();
-String name = "cain";
-String sql = "Select * from employees WHERE name = '"+cheatName+"'";
-System.out.println(sql);
-ResultSet resultSet = statement.executeQuery(sql);
-```
+	如果是普通的statement，当只能用字符串拼接来动态构建sql语句，这有sql注入的问题。
+	```java
+	Statement statement = connection.createStatement();
+	String name = "cain";
+	String sql = "Select * from employees WHERE name = '"+cheatName+"'";
+	System.out.println(sql);
+	ResultSet resultSet = statement.executeQuery(sql);
+	```
 
-所以还有preparedStatement，通过?占位符和setXXX方法来动态构建sql语句，防止了sql注入问题
-```
-String name = "cain";
-PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM employees WHERE name=?");
-preparedStatement.setString(1,name);
-ResultSet resultSet = preparedStatement.executeQuery();
-```
+	所以还有preparedStatement，通过?占位符和setXXX方法来动态构建sql语句，防止了sql注入问题
+	```java
+	String name = "cain";
+	PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM employees WHERE name=?");
+	preparedStatement.setString(1,name);
+	ResultSet resultSet = preparedStatement.executeQuery();
+	```
 
-**preparedStatement可以做两件事：预编译 和 转义**
+	**preparedStatement可以做两件事：预编译 和 转义**
 
-如果按照字符拼接的方式，每次拼接的sql语句传到MySQL里都需要重新进行语法检查和编译（生产执行方案？）过程。而开启预编译后，通过setXXX更改sql语句并不会重新进行语法检查和编译。
+	上述通过字符串拼接会导致`用户输入可以作为mysql命令，而不仅仅是文本值`，从而导致mysql注入问题。
 
-```
-// 通过参数开启预编译
-String url = "jdbc:mysql://localhost:3306/worker?useServerPrepStmts=true"
-```
+	而preparedStatement默认开启开启预编译，通过占位符将mysql的命令结构固定了，然后用户输入只能作为`纯文本`进行填充，不会作为Mysql命令。
 
-此外，preparedStatement如何通过setXXX方法生产安全的sql语句的？其实是对敏感字符进行转义，例如 ' 转为 \\' 。
+	```java
+	// 通过参数开启预编译
+	String url = "jdbc:mysql://localhost:3306/worker?useServerPrepStmts=true"
+	```
+
+	此外，preparedStatement还会对对敏感字符进行转义，例如 ' 转为 \\' ，从而保证Mysql安全。
 
 2. 创建事务
 
-通过connection的setAutoCommit，commit，和rollBack方法可以模拟出Transaction。
+	通过connection的setAutoCommit，commit，和rollBack方法可以模拟出Transaction。
 
-```
-String sql1 = "UPDATE employees SET age=18 WHERE id=1";
-String sql2 = "UPDATE employees SET name=gala WHERE id=1";
+	```java
+	String sql1 = "UPDATE employees SET age=18 WHERE id=1";
+	String sql2 = "UPDATE employees SET name=gala WHERE id=1";
 
-try {
-	// 默认情况下每次execute语句都会commit
-	// 关闭autoCommit相当于开启Transaction了
-	connection.setAutoCommit(true);
+	try {
+		// 默认情况下每次execute语句都会commit
+		// 关闭autoCommit相当于开启Transaction了
+		connection.setAutoCommit(true);
 
-	statement.execute(sql1);
-	int i = 3/0;
-	statement.execute(sql2);
+		statement.execute(sql1);
+		int i = 3/0;
+		statement.execute(sql2);
 
-	connection.commit();
-} catch (Exception e){
-	connection.rollback();
-	e.printStackTrace();
-}
-```
+		connection.commit();
+	} catch (Exception e){
+		connection.rollback();
+		e.printStackTrace();
+	}
+	```
 
 ### Statement
 
 statement就是用来执行sql语句的，但是它有不同的execute方法，会带来不同的返回值：
 
-```
+```java
 Statement statement = connection.createStatement();
 String sql = "Insert INTO employees VALUES (2,\"xiaoming\",33,1)";
 String sql2 = "SELECT * FROM employees";
@@ -201,7 +203,7 @@ while (resultSet.next()){
 
 1. 添加依赖
 
-```
+```xml
 <dependency>
 	<groupId>com.alibaba</groupId>
 	<artifactId>druid</artifactId>
@@ -211,21 +213,18 @@ while (resultSet.next()){
 
 2. 写配置文件
 
-```
+```xml
 driverClassName=com.mysql.cj.jdbc.Driver
 url=jdbc:mysql://localhost:3306/worker
 username=root
 password=123456
 
-#<!-- ??????? -->
 initialSize=6
-#<!-- ?????????? -->
 maxActive=20
-#<!-- ?????????? -->
 ```
 
 3. 创建连接池并使用
-```
+```java
 public static void main(String[] args) throws Exception {
 	Properties properties = new Properties();
 	properties.load(new FileInputStream("src/main/resources/druid.properties"));
