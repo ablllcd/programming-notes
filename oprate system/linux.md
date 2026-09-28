@@ -223,6 +223,7 @@ sudo parted /dev/sdX  # 指出要操作的磁盘
 (parted) resizepart 1 1MiB 50%  # 将分区1的大小调整为从1MiB到磁盘的50%
 
 (parted) resizepart 2 80GB # 将分区2的大小(结束位置）调整为80GB
+```
 
 ### 缩小磁盘分区
 
@@ -639,4 +640,268 @@ APT从软件仓库（repository）中获取软件包。软件仓库是一个集�
 #### apt的软件下载/安装到哪？
 
 APT下载的软件包通常存储在本地的缓存目录中，默认情况下，这个目录是`/var/cache/apt/archives/`。当用户使用APT安装软件包时，APT会先从指定的软件仓库下载软件包并将其存储在这个缓存目录中，然后再进行安装。安装位置则取决于软件包的类型和配置，通常会安装在系统的标准目录中，如`/usr/bin/`、`/usr/lib/`等。
+
+# 网络配置深入理解
+
+## linux中域名到IP的解析过程
+
+### 一句话总览
+
+程序自己既不读 `/etc/hosts`，也不直接发 DNS 查询；它调用 glibc（Linux 上最常用的标准 C 库，**NSS 就是它提供的机制**）的解析函数，由 **NSS（Name Service Switch）** 按 `/etc/nsswitch.conf` 里 `hosts:` 一行的顺序，依次去问各个“名字服务”，谁先给出结果就用谁。
+
+```
+应用程序（curl / ping / ssh / getent / 浏览器…）
+      │ 调用 glibc：getaddrinfo() / gethostbyname()（反查用 getnameinfo()）
+      ▼
+┌────────────────────────────────────────────────────────────────┐
+│ glibc 解析入口：读 /etc/nsswitch.conf 的 hosts: 行，按顺序调用模块 │
+└────────────────────────────────────────────────────────────────┘
+      │
+      ├─ files         → 读 /etc/hosts（本地静态映射）
+      ├─ mdns4_minimal → Avahi，只解析 .local（局域网 mDNS）
+      ├─ dns           → libnss_dns 按 /etc/resolv.conf 发 DNS 查询（细节见下文「DNS 深入」）
+      ├─ resolve       → libnss_resolve 经 unix socket 问 systemd-resolved（同上）
+      └─ myhostname    → 本机名 / localhost / _gateway / _outbound
+```
+
+### 1. 查询顺序由 /etc/nsswitch.conf 决定
+
+```
+hosts:          files mdns4_minimal [NOTFOUND=return] dns myhostname
+```
+
+* 从左到右依次尝试，每个模块返回一个状态：`success`（找到，默认 `return` 立即返回）、`notfound`（没这个条目，默认 `continue` 继续问下一个）、`unavail`（该服务不可用，默认 `continue`）、`tryagain`（临时失败，默认 `continue`）。
+* 可以用 `[状态=动作]` 改写默认行为：`[NOTFOUND=return]` 表示“前一个模块说找不到就立刻停止，不要再问后面的”。`!` 是取反，例如 systemd 推荐的 `resolve [!UNAVAIL=return]`：resolved 在跑但查不到 → 停止；resolved 没跑（UNAVAIL）→ 继续问后面的 `dns`。
+* 常见取值（各发行版不同，**以本机文件为准**）：
+  * Debian/Ubuntu：`hosts: files mdns4_minimal [NOTFOUND=return] dns myhostname`
+  * systemd 官方推荐：`hosts: mymachines resolve [!UNAVAIL=return] files myhostname dns`
+  * 极简 / 容器：`hosts: files dns`
+* 如果 `/etc/nsswitch.conf` 不存在，glibc 会退回内置默认（`hosts` 通常是 `files dns`）；glibc 2.33 起配置文件被修改会自动重读，更老的版本只在进程第一次查询时读一次。
+
+### 2. 各 NSS 模块到底做了什么
+
+| 模块 | 实现 | 数据来源 / 行为 |
+| --- | --- | --- |
+| `files` | libnss_files.so | 读 `/etc/hosts`（`IP 主机名 [别名…]`），改完立即生效 |
+| `dns` | libnss_dns.so | 按 `/etc/resolv.conf` 的 `nameserver/search/options` 发真正的 DNS 查询；glibc 自身不缓存（详见下文「DNS 深入」） |
+| `resolve` | libnss_resolve.so | 经 AF_UNIX socket `/run/systemd/resolve/io.systemd.Resolve` 问 systemd-resolved（**不经过 127.0.0.53**） |
+| `mdns4_minimal` | nss-mdns + avahi-daemon | 只在 `.local` 域（且只有两个 label，`host.local` 行，`a.b.local` 不管）作主；对其它名字返回 UNAVAIL，所以不会挡住正常 DNS |
+| `myhostname` | libnss_myhostname.so | 本机名 → 本机所有 IP（都没有则 127.0.0.2/::1）；`localhost`、`localhost.localdomain`、`*.localhost` → 127.0.0.1/::1；`_gateway` → 默认网关；`_outbound` → 对外通信的源地址 |
+| `mymachines` | libnss_mymachines.so | 本机 systemd 容器 / 虚拟机名 |
+| `nscd` | 不是 nsswitch 里的模块 | glibc 在走模块之前会先问的缓存守护进程（装了才有），典型的“改了 hosts 不生效”元凶 |
+| 其他 | `wins`（NetBIOS）、`nis`/`nisplus`、`ldap`、`sssd` | 企业 / 遗留环境 |
+
+`myhostname` 官方推荐位置是 **`files` 之后、`dns` 之前**（既能兜底本机名，又允许用 `/etc/hosts` 覆盖）；它同时也支持反向解析。
+
+### 3. 反向解析（IP → 域名）走同一行
+
+`getnameinfo()` / `gethostbyaddr()` 同样按 `hosts:` 的顺序查：`files` 查 `/etc/hosts`，`dns` 发 PTR 查询（`in-addr.arpa` / `ip6.arpa`），`myhostname` / `resolve` 会先认领本地 IP。所以日志里看到的反解结果可能来自 `/etc/hosts` 而根本不是 DNS。
+
+### 4. 不是所有程序都走 NSS（最容易踩的坑）
+
+| 程序 | 是否走 glibc NSS |
+| --- | --- |
+| curl / ping / ssh / wget / getent / 大多数程序 | ✅ 走 |
+| nslookup / dig / host / drill | ❌ 自己按 `/etc/resolv.conf` 直接发 DNS 查询，**看不到 /etc/hosts**（nss-mdns 官方文档明确提醒：测试 `.local` 别用 nslookup/host） |
+| resolvectl query | ❌ 直接问 systemd-resolved |
+| musl libc 程序（Alpine） | ❌ musl 没有 NSS，自己读 `/etc/hosts` 和 `/etc/resolv.conf`，`nsswitch.conf` 无效 |
+| Go 程序（`CGO_ENABLED=0`，多数静态镜像） | ❌ 自带纯 Go 解析器，自己读 `/etc/hosts`、`/etc/resolv.conf`，对 `nsswitch.conf` 支持非常有限 |
+| 开启 DoH 的浏览器 | ⚠️ 可能完全绕过系统解析 |
+| Java / JVM | ✅ 最终调 getaddrinfo，但自带缓存（`networkaddress.cache.ttl`） |
+
+所以“nslookup 查不到 /etc/hosts 里的记录”是设计如此，不是故障。
+
+### 5. 排查命令
+
+```bash
+getent hosts   example.com   # 完整走 NSS（hosts 数据库），与普通程序看到的结果一致
+getent ahosts  example.com   # 走 getaddrinfo，能看到 v4/v6 地址与顺序
+resolvectl query example.com # 直接问 systemd-resolved，不经过 NSS
+resolvectl status            # 每块网卡的 DNS、split DNS、DNSSEC / DoT 状态
+resolvectl statistics        # 缓存命中情况
+dig / nslookup example.com   # 只测 DNS 服务器本身
+cat /etc/nsswitch.conf; cat /etc/resolv.conf; cat /etc/hosts    # 查看配置文件
+strace -f -e trace=openat,connect,sendto getent hosts example.com  # 看真实走了哪条路
+```
+
+## DNS 深入：resolv.conf、dns 模块与 systemd-resolved
+
+上一节讲的是“**谁来决定问谁**”（NSS 按顺序挑模块），这一节讲“**DNS 本身是怎么被问出去的**”。
+
+### 1. 一次公网域名解析里的三个角色
+
+| 角色 | 例子 | 干什么 |
+| --- | --- | --- |
+| stub resolver（本机解析器） | NSS 的 `dns` 模块、systemd-resolved、musl | 按本机配置把查询转发给上游，**自己不做递归** |
+| 递归解析器 / 缓存 DNS | 运营商 DNS、8.8.8.8、公司内网 DNS、dnsmasq | 代你从根开始逐级问，并缓存结果 |
+| 权威服务器 | 根服务器 → `.com` 的 TLD 服务器 → `example.com` 的 NS | 保存并回答某个域的记录 |
+
+实际查询是**递归解析器**干的：问根 → 拿到 `.com` 的 TLD 服务器 → 拿到 `example.com` 的权威服务器 → 拿到 `A` 记录，然后按 TTL 缓存。本机只负责“问上游”和“查本机缓存”，不逐级迭代。
+
+>> 在netplan里配置的或者DHCP中拿到的 DNS 服务器地址就是递归解析器。
+
+>> stub resolver就是本机负责进行DNS查询的起点，例如：NSS 的 `dns` 模块。
+
+### 2. NSS 的 dns 模块读什么：/etc/resolv.conf
+
+>> 下文说的「NSS 的 `dns` 模块」就是 `nsswitch.conf` 里 `hosts:` 行写的那个 `dns`，由 glibc 自带的 `libnss_dns` 实现——「NSS 的 dns 模块」和「glibc 的 dns 模块」是同一个东西。
+
+```conf
+nameserver 127.0.0.53                  # 最多写 3 个，按顺序尝试，超时换下一个
+search corp.example.com example.com    # 短名会依次拼接这些后缀
+options ndots:1 timeout:5 attempts:2 rotate edns0 trust-ad
+```
+
+* `nameserver`：最多 3 个（`MAXNS`），按列出顺序查询；都不写时默认查本机。
+* `search`：当名字里的点**少于 `ndots`**（默认 1）时，先拼接每个 search 后缀试一遍，再按绝对名字试。`domain` 是 `search` 的过时同义词（只接受一个）。
+* `options` 常用项：
+  * `ndots:n`（默认 1，上限 15）：控制“先拼后缀还是先当绝对名字”。
+  * `timeout:n`（默认 5 秒，上限 30）、`attempts:n`（默认 2 次，上限 5）。
+  * `rotate`（轮询 nameserver）、`edns0`、`use-vc`（强制 TCP）。
+  * `single-request`：把并行的 A / AAAA 查询改成串行，用于兼容老设备。
+  * `trust-ad`：保留 DNSSEC 的 AD 位。**用 127.0.0.53 stub 时必须有它**，否则上游验证过的 DNSSEC 结果到应用手里就丢了。
+* 可按进程覆盖：环境变量 `LOCALDOMAIN=...` 改 search，`RES_OPTIONS=...` 改 options。
+* `/etc/resolv.conf` 不存在时只查本机；glibc 2.26 起 `search` 不再限制 6 个域名 / 256 字符。
+* **NSS 的 `dns` 模块自己不缓存**：查一次就真发一次查询。缓存只可能出现在 nscd、systemd-resolved、dnsmasq 或应用里。
+
+谁在写这个文件：systemd-resolved（软链）、NetworkManager、dhclient / resolvconf、netplan、Docker（容器内写 `127.0.0.11`）、Kubernetes（写 `options ndots:5`，这是 k8s 里短名解析“多绕几圈”的根源）。
+
+### 3. systemd-resolved 是什么
+
+#### 打个比方
+
+DNS 查询就像寄信，程序只知道“把信投给谁”。systemd-resolved 就是 Ubuntu 装在你本机上的一个**中转站**：
+
+* 它自己**不会**从根服务器开始逐级去问（不做递归），只负责把信转给上游 DNS（运营商、公司 DNS、8.8.8.8 这些）；
+* 它有个小本本：同样的问题答过一次就记下来，下次直接回答（**缓存**）；
+* 它顺便管着“本机该用哪些上游 DNS、哪个域名该问哪一台”。
+
+一句话：它是**本机的 DNS 管家**，不是“另一台 DNS 服务器”。
+
+#### 它为什么存在
+
+1. **缓存**：同一个域名不用每次都去问上游，更快。
+2. **统一配置**：所有程序共用一份上游 DNS 设置，不用各自去读 `/etc/resolv.conf`。
+3. **按域名分流**（split DNS）：公司域名走 VPN 的 DNS，其它走公网 DNS。
+4. **顺带支持**：加密查询（DoT）、防篡改校验（DNSSEC）、局域网名字（mDNS / LLMNR），以及 `localhost`、本机名、`_gateway` 这些特殊名字。
+
+#### 程序怎么找到它：两个入口
+
+| 入口 | 地址 | 谁从这里进 |
+| --- | --- | --- |
+| ① 装成一台普通 DNS 服务器 | `127.0.0.53:53` | NSS 的 `dns` 模块（因为 `/etc/resolv.conf` 里写的就是它）、`dig`/`nslookup`、Go 程序、浏览器 |
+| ② systemd 的私有通道 | unix socket `/run/systemd/resolve/io.systemd.Resolve`（不走网络端口） | nsswitch 里配的 `resolve` 模块、`resolvectl` 命令 |
+
+入口 ① 走的是**标准 DNS 协议**，从报文上看不出 resolved 的存在；入口 ② 是 systemd 自己的内部通道，能附带更多信息（结果来自哪块网卡、有没有校验过、是不是命中缓存）。
+
+#### 那 `dns` 模块和 resolved 是什么关系
+
+**没有直接关系**：`dns` 模块根本不知道有 resolved 这个东西，它只会照着 `/etc/resolv.conf` 里写的地址发查询。所谓“查询走了 resolved”，只是因为那个地址恰好是 resolved 的 `127.0.0.53`。
+
+所以“`dns` 模块和 resolved 的关系”只有三种情况：
+
+| nsswitch 的 `hosts:` 行 | /etc/resolv.conf | 实际路径 |
+| --- | --- | --- |
+| `... dns ...` | 指向 `127.0.0.53`（软链，Ubuntu 默认） | `dns` 模块 → 127.0.0.53:53 → resolved → 上游 |
+| `... resolve ...` | 写什么无所谓 | `nss-resolve` → unix socket → resolved（**完全不看** resolv.conf 里的 nameserver） |
+| `... dns ...` | 写真实 DNS 或 dnsmasq 的 `127.0.0.1` | `dns` 模块 → 直接问那台 DNS，resolved 不参与 |
+
+>> 记住一句话：**看 `/etc/resolv.conf` 的是 `dns` 模块，看 resolved 的是 `resolve` 模块。**（nsswitch 里配了 `resolve` 时，resolv.conf 写什么都不影响 DNS 查询。）
+
+#### /etc/resolv.conf 在 Ubuntu 上长什么样
+
+**不要手改 `/etc/resolv.conf`**，它通常是个软链，改了也白改：
+
+* `/etc/resolv.conf` → `/run/systemd/resolve/stub-resolv.conf`：里面就是 `nameserver 127.0.0.53`（外加 search 域），Ubuntu 默认，推荐。
+* `/run/systemd/resolve/resolv.conf`：里面是 resolved 知道的**真实上游 DNS 地址**，给那些不认 `127.0.0.53` 的程序或容器用。
+* 想知道当前是哪种：`readlink -f /etc/resolv.conf`。
+
+#### 怎么改resolved的配置
+
+改 `/etc/systemd/resolved.conf`（或者放一份 `resolved.conf.d/*.conf`），然后 `sudo systemctl restart systemd-resolved` 生效。
+
+| 配置项 | 作用 |
+| --- | --- |
+| `DNS=` | 用哪些上游 DNS |
+| `FallbackDNS=` | 谁都没给 DNS 时的兜底；留空表示禁用 |
+| `Domains=` | 哪些域名归它管，用来做分流；`~.` 表示“其余的都归我” |
+| `DNSOverTLS=` | 是否加密查询：`no` / `opportunistic` / `yes` |
+| `DNSSEC=` | 是否做防篡改校验：`no` / `allow-downgrade` / `yes` |
+| `LLMNR=` / `MulticastDNS=` | 是否解析局域网里的名字 |
+| `Cache=` / `DNSStubListener=` | 是否缓存 / 是否监听 `127.0.0.53:53` |
+
+（还有 `DNSStubListenerExtra=`、`ResolveUnicastSingleLabel=` 等冷门项，用到再查手册。）
+
+例：全局使用加密 DNS（DoT）
+
+```ini
+# /etc/systemd/resolved.conf.d/dot.conf
+[Resolve]
+DNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net
+DNSOverTLS=true
+Domains=~.
+```
+
+> 想知道它当前到底在用哪些 DNS、每块网卡分别是什么，用 `resolvectl status` 看。
+
+#### netplan / DHCP 里的 DNS 是怎么进 resolved 的
+
+resolved 里的 DNS 有**两个来源**，互不覆盖：
+
+| 来源 | 在哪 | 谁写 |
+| --- | --- | --- |
+| 手写的全局设置 | `/etc/systemd/resolved.conf`（+ `resolved.conf.d/*.conf`） | 你自己 |
+| 每块网卡的设置 | 不写进任何配置文件，只在 resolved 运行时内存里（重启后由网络程序重新推一次） | netplan / DHCP / VPN **自动**推给它 |
+
+所以：**netplan 和 DHCP 里的 DNS 不会写进 `/etc/systemd/resolved.conf`**。网络管理程序（systemd-networkd 或 NetworkManager）是绕开配置文件、直接通过 D-Bus 告诉 resolved：“eth0 这块网卡用这些 DNS、管这些域名”。
+
+路径大致是这样：
+
+```
+netplan 的 yaml
+   │ netplan generate
+   ▼
+/run/systemd/network/*.network   （yaml 被翻译成后端配置，里面有 DNS= / Domains=）
+   │ systemd-networkd（或 NetworkManager）
+   │ D-Bus：SetLinkDNS() / SetLinkDomains()
+   ▼
+systemd-resolved（内存里的“每网卡 DNS 配置”）
+   └─ 顺便生成 /run/systemd/resolve/stub-resolv.conf 给别的程序看
+```
+
+DHCP 走的是同一条路：网卡拿到的 IPv4 DNS（option 6）和 IPv6 DNS（RDNSS），由 networkd 或 NetworkManager 收下后，同样用 D-Bus 推给 resolved。
+
+两者的分工：**每块网卡的 DNS** 负责它自己那条链路/域名的查询；**`resolved.conf` 里的全局 `DNS=`** 负责没匹配到任何网卡的查询（在那里写 `Domains=~.` 就变成“默认都走它”）。
+
+怎么验证 —— `resolvectl status` 会把这两部分分开显示：
+
+```bash
+resolvectl status
+#  ├─ Global：DNS Servers: ...        ← 这一段来自 /etc/systemd/resolved.conf（你手写的）
+#  └─ Link 2 (eth0)：DNS Servers: 8.8.8.8
+#                   DNS Domain: ...   ← 这一段来自 netplan / DHCP（D-Bus 推来的）
+```
+
+配套命令：
+
+```bash
+resolvectl dns                      # 每块网卡当前生效的 DNS
+resolvectl domain                   # 每块网卡的域名路由（split DNS 表）
+cat /run/systemd/network/*.network  # netplan(networkd) 生成的后端配置，看 yaml 里的 DNS 变成了什么
+```
+
+>> 如果系统根本没启用 resolved（例如直接由 dhclient 写 /etc/resolv.conf），那 netplan / DHCP 的 DNS 就直接落在 `/etc/resolv.conf` 里，不经过 resolved。
+
+### 4. 把两条路合起来看
+
+```
+curl example.com
+  └─ glibc getaddrinfo → NSS（按 hosts: 行）
+       ├─ files → /etc/hosts                       命中就结束
+       └─ dns   → /etc/resolv.conf（nameserver 127.0.0.53）
+                   └─ systemd-resolved stub（先查自己的缓存 / /etc/hosts）
+                        └─ 仍未命中 → 按 split DNS 选上游 → 递归解析器 → 根 / TLD / 权威
+                             └─ 结果按 TTL 缓存在 resolved → 原路返回
+（若 hosts: 行里配的是 resolve，则上面第 3 步换成 nss-resolve 经 unix socket，不经过 53 端口）
+```
 
