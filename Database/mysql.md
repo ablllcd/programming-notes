@@ -977,6 +977,171 @@ characteristic说明:
 · READS SQL DATA:包含读取数据的语句,但不包含写入数据的语句。
 ```
 
+## 事务
+
+### 为什么需要隔离级别
+
+平时我们只用事务来保证"操作成功才落库，失败则回滚"，这其实是**原子性**：保证一个事务内部的多次写要么全成、要么全败。而**隔离性**要解决的是另一件事——多个事务同时跑的时候，彼此能读到什么、会不会互相覆盖。
+
+>> 注意，隔离级别不是一个"要不要用"的开关，它永远在生效：每开一个事务，就已经跑在某个级别上（MySQL 默认 REPEATABLE READ）。所以问题不是"需不需要"，而是"该选哪一级"。
+
+#### 并发问题
+
+首先来看一个并发问题，我们借此来查看隔离性的能力。
+
+1. 事务A和事务B都要给 cain 扣 100：
+
+```
+-- 事务A
+begin;
+select money from user where username='cain';    -- 200
+update user set money=100 where username='cain'; -- 应用层算出 200-100
+commit;
+
+-- 事务B（与A并发）
+begin;
+select money from user where username='cain';    -- 也是 200
+update user set money=100 where username='cain';
+commit;
+```
+
+两个事务都成功提交，没有任何回滚，但结果 money=100，而扣两次本该是 0。这就是**丢失更新**：错在"先读到 200、在应用层算出 100、再直接写100"，那个 200 是过期数据。所以在RR的隔离级别下，该并发问题依旧存在。
+
+2. 事务A修改账单，事务B进行对账：
+
+```
+-- RC 隔离级别下的对账事务
+SELECT SUM(amount) FROM out_records;   -- 1000
+-- ↕ 此刻另一笔 50 的转账提交了
+SELECT SUM(amount) FROM in_records;    -- 1050   ← 借贷不平，凭空多出 50
+```
+
+RC隔离级别下的事务B在两次查询之间，读到了不同的快照，导致借贷不平。这个问题在RR下就不会发生，因为RR保证了事务内的多次查询都是基于同一快照。所以隔离级别可以解决这类的**读侧冲突**并发问题。
+
+#### 隔离级别管什么、不管什么
+
+1. **管（读侧冲突）**：脏读、不可重复读、幻读、读偏斜。它本质上是一份"读可见性合同"，规定你读的时候世界是什么样。
+2. **不管（写侧冲突）**：丢失更新、写偏斜。这些要靠原子 SQL、加锁读、唯一索引、乐观锁来解决，跟隔离级别基本无关——RC 下照样会丢。
+3. **唯一例外**：SERIALIZABLE 把普通 select 也变成加锁读，因此能覆盖写侧，代价是并发急剧下降。
+
+所以隔离级别更像一个**旋钮**：往 RR 拧 = 读一致性更强 + 锁范围更大（next-key lock）+ 更容易死锁；往 RC 拧 = 读一致性更弱 + 无间隙锁 + 并发更高。这也是很多互联网业务把默认改成 RC 的原因。
+
+#### 读保证的实际价值
+
+隔离级别提供"读一致性"，以下是其常见的应用场景：
+
+1. **报表/对账**：一个事务里 `select sum(out)` 和 `select sum(in)` 必须基于同一时刻，否则中间提交的转账会让借贷不平，而且不报任何错。
+2. **下单快照**：读商品价格、折扣、库存必须在同一时刻，否则落库的是一份从未存在过的组合。
+3. **长事务导出**：`start transaction with consistent snapshot` 让几百条查询基于同一快照，跑十分钟也不阻塞业务写入，mysqldump --single-transaction 就是这个原理。
+
+读保证的价值在于"**不加锁就能拿到一致视图**"，这是 MVCC 白送的能力，而不能保证解决事务并发冲突。
+
+**注意**：RR 的快照不是在 `begin` 时建立，而是在事务里第一条 `select` 执行时才建立。要明确在事务开始就定格，用 `start transaction with consistent snapshot;`。
+
+### MySQL隔离级别
+
+MySQL的隔离级别决定了事务之间的可见性和并发性。MySQL支持四种隔离级别：
+
+1. READ UNCOMMITTED（读未提交）：最低的隔离级别，允许一个事务读取另一个事务尚未提交的数据。
+2. READ COMMITTED（读已提交）：允许一个事务读取另一个事务已经提交的数据。
+3. REPEATABLE READ（可重复读）：保证在同一个事务中多次执行相同的查询会得到相同的结果。
+4. SERIALIZABLE（可串行化）：最高的隔离级别，它通过强制事务串行执行来防止脏读、不可重复读和幻读。
+
+#### Read Uncommited 读未提交
+
+```sql
+-- 2. 事务1查询到money为50
+start transaction;
+select * from user;
+commit;
+```
+
+```sql
+-- 1. 事务2将money该为50
+start transaction;
+update user set money=50 where username='cain';
+-- 3. 事务2发生回滚，将money还原为100
+rollback
+```
+
+这就是脏读问题。
+
+#### Read Commited 读已提交
+
+```sql
+-- 1. 事务1修改money为50，但是未提交
+start transaction;
+update user set money=50 where username='cain';
+-- 3. 事务1提交
+commit ;
+```
+
+```sql
+start transaction;
+-- 2. 事务2查询money发现是修改前的100
+select * from user;
+-- 4. 事务2查询money发现是修改后的50
+select * from user;
+commit;
+```
+
+这解决了脏读问题，但是发现事务2两次相同的查询带来不同的结果--即不可重复读的问题。
+
+
+#### Repeatable Read 可重复读
+
+```sql
+-- 2. 事务1修改money为50后提交
+start transaction;
+update user set money=50 where username='cain';
+select * from user;
+commit;
+```
+
+```sql
+start transaction;
+-- 1. 事务2读取到money为原始值100
+select * from user;
+-- 3. 事务2再次读依旧是原始值100
+select * from user;
+commit;
+
+-- 4. 直到事务提交后再查询才是修改后的值50
+select * from user;
+```
+
+可重复读保证在事务中进行相同的查询，会得到相同的结果。
+
+#### Serilizable 串行/序列化
+
+```sql
+-- 1.串行事务执行
+start transaction;
+update user set money=100 where username='cain';
+commit;
+```
+
+```sql
+-- 2.其它事务尝试执行
+start transaction;
+-- 3.这里会卡住，等待串行事务提交
+update user set money=100 where username='cain';
+commit;
+```
+
+
+串行要求事务真的是一个一个执行的，当事务1未提交时，事务2只能等待。
+
+串行级别事务执行前，如果有其它事务在执行则进行等待；串行事务执行是，其它任意隔离级别的事务要执行也得先等串行事务执行完。
+
+### MVCC与锁机制
+
+MVCC（Multi-Version Concurrency Control）是MySQL中实现高并发的一种机制，它通过维护数据的多个版本来实现读写不冲突。当一个事务读取数据时，它会看到该事务开始时的数据版本，而不会受到其他事务的修改影响。
+
+锁机制则是通过加锁来保证数据的一致性。MySQL中的锁可以分为共享锁（S锁）和排他锁（X锁）。共享锁允许多个事务同时读取同一数据，而排他锁则阻止其他事务对同一数据进行读写操作。
+
+
+
 # Mysql部署
 
 ## DOCKER 部署
